@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CredVault - Access Credentials</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; background: #f0f4ff; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+    .box { background: white; padding: 40px; border-radius: 12px; width: 100%; max-width: 460px; box-shadow: 0 2px 20px rgba(0,0,0,0.1); }
+    h2 { font-size: 22px; margin-bottom: 8px; color: #1a1a2e; }
+    p { color: #666; font-size: 14px; margin-bottom: 24px; }
+    label { font-size: 13px; font-weight: bold; color: #444; display: block; margin-bottom: 6px; }
+    input { width: 100%; padding: 12px; border: 1.5px solid #ddd; border-radius: 8px; font-size: 16px; outline: none; }
+    input:focus { border-color: #1a73e8; }
+    button { width: 100%; padding: 13px; background: #1a73e8; color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: bold; cursor: pointer; margin-top: 12px; }
+    button:hover { background: #1558b0; }
+    .error { background: #fff0f0; border: 1px solid #ffcccc; color: #c0392b; padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-top: 14px; display: none; }
+    .result { margin-top: 20px; background: #f8f9fa; border-radius: 10px; padding: 20px; display: none; }
+    .result-row { margin-bottom: 14px; }
+    .result-label { font-size: 11px; color: #888; font-weight: bold; text-transform: uppercase; margin-bottom: 4px; }
+    .result-val { font-size: 15px; font-weight: bold; color: #1a1a2e; font-family: monospace; background: #e8f0fe; padding: 6px 10px; border-radius: 6px; }
+    .app-link { margin-top: 16px; text-align: center; }
+    .app-link a { color: #1a73e8; font-weight: bold; font-size: 15px; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h2>Retrieve your credentials</h2>
+    <p>Enter the pre-shared key from your email to view your login details.</p>
+
+    <label>Pre-shared key</label>
+    <input type="text" id="psk" placeholder="Enter your key here" autocomplete="off" />
+    <button onclick="unlock()">View credentials</button>
+    <div class="error" id="err"></div>
+
+    <div class="result" id="result">
+      <div class="result-row">
+        <div class="result-label">Application</div>
+        <div class="result-val" id="r-app"></div>
+      </div>
+      <div class="result-row">
+        <div class="result-label">Username</div>
+        <div class="result-val" id="r-user"></div>
+      </div>
+      <div class="result-row">
+        <div class="result-label">Password</div>
+        <div class="result-val" id="r-pass"></div>
+      </div>
+      <div class="app-link">
+        <a id="r-url" href="#" target="_blank">Open application</a>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    async function unlock() {
+      const psk = document.getElementById("psk").value.trim();
+      const err = document.getElementById("err");
+      err.style.display = "none";
+
+      if (!psk) {
+        err.textContent = "Please enter your key.";
+        err.style.display = "block";
+        return;
+      }
+
+      const res = await fetch(window.location.href, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ psk: psk })
+      });
+
+      const data = await res.json();
+
+      if (data.error) {
+        err.textContent = data.error;
+        err.style.display = "block";
+      } else {
+        const c = JSON.parse(data.credentials);
+        document.getElementById("r-app").textContent = c.app_name;
+        document.getElementById("r-user").textContent = c.username;
+        document.getElementById("r-pass").textContent = c.password;
+        document.getElementById("r-url").href = c.app_url;
+        document.getElementById("r-url").textContent = "Open " + c.app_name;
+        document.getElementById("result").style.display = "block";
+      }
+    }
+
+    document.getElementById("psk").addEventListener("keydown", function(e) {
+      if (e.key === "Enter") unlock();
+    });
+  </script>
+</body>
+</html>
