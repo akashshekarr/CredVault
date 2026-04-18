@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CredVault — Admin</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Syne:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0d0f12;
+      --surface: #13161b;
+      --surface2: #1a1e25;
+      --border: #2a2f3a;
+      --amber: #EF9F27;
+      --amber-glow: rgba(239,159,39,0.10);
+      --text: #e8e4d9;
+      --muted: #7a8090;
+      --green: #639922;
+      --green-dim: rgba(99,153,34,0.15);
+      --red: #E24B4A;
+      --red-dim: rgba(226,75,74,0.12);
+      --blue: #378ADD;
+    }
+
+    body {
+      background: var(--bg);
+      font-family: 'Syne', sans-serif;
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── HEADER ── */
+    .header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+    .logo { display: flex; align-items: center; gap: 10px; }
+    .logo-icon {
+      width: 30px; height: 30px;
+      background: var(--amber);
+      border-radius: 7px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .logo-icon svg { width: 16px; height: 16px; fill: #0d0f12; }
+    .logo-name { font-size: 15px; font-weight: 700; letter-spacing: 0.03em; }
+    .logo-tag {
+      font-size: 10px;
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--muted);
+      margin-top: 1px;
+    }
+    .header-right { display: flex; align-items: center; gap: 14px; }
+    .conn-pill {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 11px;
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--muted);
+    }
+    .conn-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--green);
+      animation: blink 2s infinite;
+    }
+    .conn-dot.offline { background: var(--red); animation: none; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+    .btn {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: 'Syne', sans-serif;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 7px 16px;
+      border-radius: 7px;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .btn:hover { border-color: var(--amber); color: var(--amber); }
+    .btn-primary {
+      background: var(--amber);
+      color: #0d0f12;
+      border: none;
+      font-weight: 700;
+    }
+    .btn-primary:hover { background: #d48e20; color: #0d0f12; }
+    .btn-danger {
+      background: var(--red-dim);
+      color: #f09595;
+      border: 1px solid rgba(226,75,74,0.3);
+    }
+    .btn-danger:hover { border-color: var(--red); }
+    .btn-sm { padding: 5px 12px; font-size: 11px; }
+
+    /* ── MAIN ── */
+    .main { padding: 22px 28px; max-width: 1320px; margin: 0 auto; }
+
+    /* ── ERROR BANNER ── */
+    .error-banner {
+      background: var(--red-dim);
+      border: 1px solid rgba(226,75,74,0.3);
+      border-radius: 8px;
+      padding: 10px 16px;
+      font-size: 12px;
+      font-family: 'JetBrains Mono', monospace;
+      color: #f09595;
+      margin-bottom: 18px;
+      display: none;
+    }
+
+    /* ── STAT CARDS ── */
+    .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+    .stat {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 18px;
+      transition: border-color 0.2s;
+      position: relative;
+      overflow: hidden;
+    }
+    .stat::after {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0; height: 2px;
+      background: var(--amber); opacity: 0;
+      transition: opacity 0.2s;
+    }
+    .stat:hover { border-color: var(--amber); }
+    .stat:hover::after { opacity: 1; }
+    .stat-label {
+      font-size: 10px;
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--muted);
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    .stat-val { font-size: 30px; font-weight: 700; line-height: 1; }
+    .stat-note { font-size: 11px; color: var(--muted); margin-top: 5px; }
+    .stat-note.g { color: #97C459; }
+    .stat-note.a { color: var(--amber); }
+
+    /* ── GRID LAYOUTS ── */
+    .grid-2-3 { display: grid; grid-template-columns: 2fr 3fr; gap: 14px; margin-bottom: 14px; }
+    .grid-2   { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+
+    /* ── PANEL ── */
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .panel-head {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .panel-title {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    /* ── APP LIST ── */
+    .app-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 9px 16px;
+      border-bottom: 1px solid rgba(42,47,58,0.6);
+      cursor: pointer;
+      transition: background 0.1s;
+    }
+    .app-row:last-child { border-bottom: none; }
+    .app-row:hover { background: var(--surface2); }
+    .app-avatar {
+      width: 32px; height: 32px;
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 700;
+      flex-shrink: 0;
+    }
+    .app-info { flex: 1; }
+    .app-name  { font-size: 13px; font-weight: 600; }
+    .app-user  { font-size: 11px; color: var(--muted); font-family: 'JetBrains Mono', monospace; }
+    .badge {
+      font-size: 10px;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 500;
+    }
+    .badge-g { background: var(--green-dim); color: #97C459; border: 1px solid rgba(99,153,34,0.3); }
+    .badge-a { background: var(--amber-glow); color: var(--amber); border: 1px solid rgba(239,159,39,0.3); }
+    .badge-r { background: var(--red-dim); color: #f09595; border: 1px solid rgba(226,75,74,0.25); }
+
+    /* ── LOG TABLE ── */
+    .log-controls {
+      display: flex;
+      gap: 8px;
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .inp {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      padding: 7px 11px;
+      color: var(--text);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .inp:focus { border-color: var(--amber); }
+    .inp-search { flex: 1; }
+    select.inp { cursor: pointer; }
+
+    table { width: 100%; border-collapse: collapse; }
+    thead th {
+      font-size: 10px;
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--muted);
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      padding: 8px 16px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+    tbody td {
+      padding: 9px 16px;
+      font-size: 12px;
+      font-family: 'JetBrains Mono', monospace;
+      border-bottom: 1px solid rgba(42,47,58,0.4);
+    }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr:hover td { background: var(--surface2); }
+
+    /* ── TOKEN ROWS ── */
+    .token-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 9px 16px;
+      border-bottom: 1px solid rgba(42,47,58,0.4);
+    }
+    .token-row:last-child { border-bottom: none; }
+    .token-user { font-size: 12px; font-family: 'JetBrains Mono', monospace; }
+    .token-app  { font-size: 11px; color: var(--muted); }
+    .expiry-wrap { display: flex; align-items: center; gap: 8px; }
+    .expiry-label { font-size: 10px; font-family: 'JetBrains Mono', monospace; color: var(--muted); min-width: 40px; text-align: right; }
+    .bar-bg  { width: 72px; height: 4px; background: var(--surface2); border-radius: 2px; overflow: hidden; }
+    .bar-fill { height: 100%; border-radius: 2px; transition: width 0.5s; }
+
+    /* ── STATS BAR CHART ── */
+    .stat-bar-row { margin-bottom: 11px; }
+    .stat-bar-meta { display: flex; justify-content: space-between; margin-bottom: 3px; }
+    .stat-bar-name { font-size: 11px; font-family: 'JetBrains Mono', monospace; }
+    .stat-bar-cnt  { font-size: 11px; font-family: 'JetBrains Mono', monospace; color: var(--amber); }
+    .stat-bar-bg  { height: 5px; background: var(--surface2); border-radius: 3px; overflow: hidden; }
+    .stat-bar-fill { height: 100%; border-radius: 3px; transition: width 0.6s ease; }
+
+    /* ── EMPTY / LOADING ── */
+    .empty {
+      text-align: center;
+      padding: 28px;
+      font-size: 12px;
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--muted);
+    }
+    .loading {
+      text-align: center;
+      padding: 28px;
+      font-size: 11px;
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--amber);
+      animation: blink 1.4s infinite;
+    }
+
+    /* ── MODAL ── */
+    .overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.65);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 200;
+    }
+    .overlay.open { display: flex; }
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      width: 440px;
+      max-width: 95vw;
+      overflow: hidden;
+    }
+    .modal-head {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .modal-title { font-size: 14px; font-weight: 700; }
+    .modal-close {
+      background: none; border: none;
+      color: var(--muted); font-size: 20px;
+      cursor: pointer; line-height: 1;
+    }
+    .modal-close:hover { color: var(--text); }
+    .modal-body { padding: 18px; }
+    .modal-foot {
+      padding: 12px 18px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+    .field { margin-bottom: 14px; }
+    .field-label {
+      font-size: 10px;
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--muted);
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      margin-bottom: 5px;
+    }
+    .field-val {
+      font-size: 13px;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .field-val.link { color: var(--blue); }
+    .field-val.dim  { color: var(--muted); font-size: 11px; }
+  </style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="logo">
+    <div class="logo-icon">
+      <svg viewBox="0 0 16 16"><path d="M8 1a4 4 0 0 0-4 4v1H3a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1h-1V5a4 4 0 0 0-4-4zm2 5H6V5a2 2 0 0 1 4 0v1zm-2 3a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z"/></svg>
+    </div>
+    <div>
+      <div class="logo-name">CredVault</div>
+      <div class="logo-tag">5C Network · Admin Console</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="conn-pill">
+      <div class="conn-dot" id="connDot"></div>
+      <span id="connLabel">connecting...</span>
+    </div>
+    <button class="btn" onclick="loadAll()">↺ Refresh</button>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+
+  <div class="error-banner" id="errBanner"></div>
+
+  <!-- STAT CARDS -->
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-label">Total Apps</div>
+      <div class="stat-val" id="sApps">—</div>
+      <div class="stat-note">in vault</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Active Tokens</div>
+      <div class="stat-val" id="sTokens">—</div>
+      <div class="stat-note a">awaiting use</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Total Accesses</div>
+      <div class="stat-val" id="sAccesses">—</div>
+      <div class="stat-note g">all time</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Unique Users</div>
+      <div class="stat-val" id="sUsers">—</div>
+      <div class="stat-note">served</div>
+    </div>
+  </div>
+
+  <!-- ROW 1: Apps + Audit Log -->
+  <div class="grid-2-3">
+
+    <!-- APPS PANEL -->
+    <div class="panel">
+      <div class="panel-head">
+        <span class="panel-title">Applications</span>
+        <button class="btn btn-sm" onclick="openAddApp()">+ Add App</button>
+      </div>
+      <div id="appsPanel"><div class="loading">loading vault...</div></div>
+    </div>
+
+    <!-- AUDIT LOG PANEL -->
+    <div class="panel">
+      <div class="panel-head" style="border-bottom:none">
+        <span class="panel-title">Audit Log</span>
+      </div>
+      <div class="log-controls">
+        <input class="inp inp-search" id="logSearch" placeholder="filter by user or app..." oninput="filterLogs()">
+        <select class="inp" id="logAction" onchange="filterLogs()">
+          <option value="">all actions</option>
+          <option value="credentials_sent">credentials_sent</option>
+          <option value="credentials_accessed">credentials_accessed</option>
+        </select>
+      </div>
+      <div id="logsPanel"><div class="loading">fetching logs...</div></div>
+    </div>
+
+  </div>
+
+  <!-- ROW 2: Active Tokens + Access by App -->
+  <div class="grid-2">
+
+    <div class="panel">
+      <div class="panel-head">
+        <span class="panel-title">Active PSK Tokens</span>
+        <span class="badge badge-a" id="tokenCount">—</span>
+      </div>
+      <div id="tokensPanel"><div class="loading">loading tokens...</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <span class="panel-title">Access Frequency by App</span>
+      </div>
+      <div style="padding:14px 16px" id="freqPanel"><div class="loading">computing...</div></div>
+    </div>
+
+  </div>
+
+</div><!-- /main -->
+
+<!-- MODAL -->
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <div class="modal-head">
+      <span class="modal-title" id="modalTitle">—</span>
+      <button class="modal-close" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+    <div class="modal-foot" id="modalFoot"></div>
+  </div>
+</div>
+
+<script>
+  /* ── helpers ── */
+  const appColors = ['#378ADD','#EF9F27','#639922','#E24B4A','#9F6DD4','#1D9E75','#D4537E','#E8824A'];
+  function colorFor(s){ return appColors[Math.abs([...s].reduce((a,c)=>a+c.charCodeAt(0),0)) % appColors.length]; }
+  function initials(s){ return s.slice(0,2).toUpperCase(); }
+  function fmtDate(iso){
+    if(!iso) return '—';
+    const d = new Date(iso);
+    return d.toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
+  }
+
+  /* ── state ── */
+  let allLogs  = [];
+  let allApps  = [];
+  let allTokens = [];
+
+  /* ── connection status ── */
+  function setConn(ok){
+    const dot = document.getElementById('connDot');
+    const lbl = document.getElementById('connLabel');
+    dot.className = 'conn-dot' + (ok ? '' : ' offline');
+    lbl.textContent = ok ? 'connected · localhost:5000' : 'offline — start Flask';
+  }
+
+  function showErr(msg){
+    const b = document.getElementById('errBanner');
+    b.style.display = 'block';
+    b.textContent = '⚠  ' + msg;
+  }
+  function hideErr(){ document.getElementById('errBanner').style.display = 'none'; }
+
+  /* ── fetch wrappers ── */
+  async function get(path){ const r = await fetch(path); if(!r.ok) throw new Error(r.statusText); return r.json(); }
+  async function post(path, body){ const r = await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); if(!r.ok) throw new Error(r.statusText); return r.json(); }
+
+  /* ── RENDER: apps ── */
+  function renderApps(apps){
+    allApps = apps;
+    document.getElementById('sApps').textContent = apps.length;
+    const el = document.getElementById('appsPanel');
+    if(!apps.length){ el.innerHTML='<div class="empty">no apps seeded yet</div>'; return; }
+    el.innerHTML = apps.map(a=>`
+      <div class="app-row" onclick="viewApp('${a.id}')">
+        <div class="app-avatar" style="background:${colorFor(a.name)}22;color:${colorFor(a.name)}">${initials(a.name)}</div>
+        <div class="app-info">
+          <div class="app-name">${a.name}</div>
+          <div class="app-user">${a.username || '—'}</div>
+        </div>
+        <span class="badge badge-g">active</span>
+      </div>`).join('');
+  }
+
+  /* ── RENDER: logs ── */
+  function renderLogs(logs){
+    allLogs = logs;
+    document.getElementById('sAccesses').textContent = logs.length;
+    const uniq = new Set(logs.map(l=>l.user_email).filter(Boolean));
+    document.getElementById('sUsers').textContent = uniq.size;
+    filterLogs();
+    renderFreq(logs);
+  }
+
+  function filterLogs(){
+    const q = document.getElementById('logSearch').value.toLowerCase();
+    const a = document.getElementById('logAction').value;
+    const filtered = allLogs.filter(l=>
+      (!q || (l.user_email||'').toLowerCase().includes(q) || (l.app_name||'').toLowerCase().includes(q)) &&
+      (!a || (l.action||'') === a)
+    );
+    const el = document.getElementById('logsPanel');
+    if(!filtered.length){ el.innerHTML='<div class="empty">no matching entries</div>'; return; }
+    el.innerHTML = `<div style="overflow-x:auto"><table>
+      <thead><tr><th>User</th><th>App</th><th>Action</th><th>Time</th></tr></thead>
+      <tbody>${filtered.slice(0,30).map(l=>{
+        const cls = (l.action||'').includes('accessed') ? 'badge-g' : 'badge-a';
+        return `<tr>
+          <td><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${colorFor(l.user_email||'')};margin-right:6px;vertical-align:middle"></span>${(l.user_email||'').split('@')[0]}</td>
+          <td>${l.app_name||'—'}</td>
+          <td><span class="badge ${cls}">${l.action||'—'}</span></td>
+          <td style="color:var(--muted)">${fmtDate(l.timestamp)}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table></div>`;
+  }
+
+  /* ── RENDER: tokens ── */
+  function renderTokens(tokens){
+    allTokens = tokens;
+    const now = Date.now();
+    const active = tokens.filter(t=> !t.used && t.expires_at && new Date(t.expires_at).getTime() > now);
+    document.getElementById('sTokens').textContent = active.length;
+    document.getElementById('tokenCount').textContent = active.length + ' active';
+    const el = document.getElementById('tokensPanel');
+    if(!active.length){ el.innerHTML='<div class="empty">no active tokens</div>'; return; }
+    el.innerHTML = active.map(t=>{
+      const exp   = new Date(t.expires_at).getTime();
+      const cre   = t.created_at ? new Date(t.created_at).getTime() : exp - 48*3600*1000;
+      const total = exp - cre;
+      const left  = Math.max(0, exp - now);
+      const pct   = total > 0 ? Math.round((left/total)*100) : 0;
+      const hrs   = Math.round(left/3600000);
+      const col   = pct > 50 ? '#639922' : pct > 20 ? '#EF9F27' : '#E24B4A';
+      return `<div class="token-row">
+        <div>
+          <div class="token-user">${(t.user_email||'').split('@')[0]}</div>
+          <div class="token-app">${t.app_name||'—'}</div>
+        </div>
+        <div class="expiry-wrap">
+          <div class="expiry-label">${hrs}h left</div>
+          <div class="bar-bg"><div class="bar-fill" style="width:${pct}%;background:${col}"></div></div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  /* ── RENDER: frequency bars ── */
+  function renderFreq(logs){
+    const counts = {};
+    logs.forEach(l=>{ if(l.app_name) counts[l.app_name] = (counts[l.app_name]||0)+1; });
+    const sorted = Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,8);
+    const max = sorted[0]?.[1] || 1;
+    const el = document.getElementById('freqPanel');
+    if(!sorted.length){ el.innerHTML='<div class="empty">no access data yet</div>'; return; }
+    el.innerHTML = sorted.map(([name,cnt])=>`
+      <div class="stat-bar-row">
+        <div class="stat-bar-meta">
+          <span class="stat-bar-name">${name}</span>
+          <span class="stat-bar-cnt">${cnt}</span>
+        </div>
+        <div class="stat-bar-bg">
+          <div class="stat-bar-fill" style="width:${Math.round((cnt/max)*100)}%;background:${colorFor(name)}"></div>
+        </div>
+      </div>`).join('');
+  }
+
+  /* ── MODAL: view app ── */
+  function viewApp(id){
+    const app = allApps.find(a=>a.id===id);
+    if(!app) return;
+    document.getElementById('modalTitle').textContent = app.name;
+    document.getElementById('modalBody').innerHTML = `
+      <div class="field"><div class="field-label">App Name</div><div class="field-val">${app.name}</div></div>
+      <div class="field"><div class="field-label">URL</div><div class="field-val link">${app.url||'—'}</div></div>
+      <div class="field"><div class="field-label">Username</div><div class="field-val">${app.username||'—'}</div></div>
+      <div class="field"><div class="field-label">Password</div><div class="field-val">••••••••••  <span style="font-size:10px;color:var(--muted)">(stored encrypted)</span></div></div>
+      <div class="field"><div class="field-label">Document ID</div><div class="field-val dim">${app.id}</div></div>`;
+    document.getElementById('modalFoot').innerHTML = `<button class="btn" onclick="closeModal()">Close</button>`;
+    document.getElementById('overlay').classList.add('open');
+  }
+
+  /* ── MODAL: add app ── */
+  function openAddApp(){
+    document.getElementById('modalTitle').textContent = 'Add New Application';
+    document.getElementById('modalBody').innerHTML = `
+      <div class="field"><div class="field-label">App Name *</div><input class="inp" style="width:100%" id="fName" placeholder="e.g. Slack"></div>
+      <div class="field"><div class="field-label">URL *</div><input class="inp" style="width:100%" id="fUrl" placeholder="https://app.slack.com"></div>
+      <div class="field"><div class="field-label">Username / Email *</div><input class="inp" style="width:100%" id="fUser" placeholder="team@5cnetwork.com"></div>
+      <div class="field"><div class="field-label">Password *</div><input class="inp" style="width:100%" id="fPass" type="password" placeholder="••••••••"></div>`;
+    document.getElementById('modalFoot').innerHTML = `
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitApp()">Add to Vault</button>`;
+    document.getElementById('overlay').classList.add('open');
+  }
+
+  async function submitApp(){
+    const name = document.getElementById('fName').value.trim();
+    const url  = document.getElementById('fUrl').value.trim();
+    const user = document.getElementById('fUser').value.trim();
+    const pass = document.getElementById('fPass').value;
+    if(!name||!url||!user||!pass){ alert('All fields are required.'); return; }
+    try {
+      await post('/admin/applications', {name, url, username:user, password:pass});
+      closeModal();
+      loadAll();
+    } catch(e){ alert('Error adding app: ' + e.message); }
+  }
+
+  function closeModal(){ document.getElementById('overlay').classList.remove('open'); }
+
+  /* ── LOAD ALL ── */
+  async function loadAll(){
+    hideErr();
+    setConn(false);
+    try {
+      const [apps, logs, tokens] = await Promise.all([
+        get('/admin/applications'),
+        get('/admin/logs'),
+        get('/admin/tokens'),
+      ]);
+      setConn(true);
+      renderApps(apps);
+      renderLogs(logs);
+      renderTokens(tokens);
+    } catch(e){
+      setConn(false);
+      showErr('Cannot reach Flask at localhost:5000 — make sure the server is running.');
+    }
+  }
+
+  /* ── close modal on overlay click ── */
+  document.getElementById('overlay').addEventListener('click', function(e){
+    if(e.target === this) closeModal();
+  });
+
+  loadAll();
+</script>
+</body>
+</html>

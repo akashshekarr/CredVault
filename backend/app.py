@@ -148,6 +148,20 @@ def add_application():
     return jsonify({"success": True})
 
 
+@app.route("/admin/tokens", methods=["GET"])
+def admin_tokens():
+    tokens = db.collection("psk_tokens").get()
+    result = []
+    for t in tokens:
+        d = t.to_dict()
+        d["id"] = t.id
+        for key in ("expires_at", "created_at"):
+            if key in d and hasattr(d[key], "isoformat"):
+                d[key] = d[key].isoformat()
+        result.append(d)
+    return jsonify(result)
+
+
 @app.route("/admin", methods=["GET"])
 def admin_dashboard():
     return render_template("admin.html")
