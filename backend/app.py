@@ -6,6 +6,7 @@ from email_sender import send_credentials_email
 import hashlib
 import os
 import json
+import threading
 from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
 
@@ -116,7 +117,11 @@ def process_request():
     })
 
     # ── Notify admin via email ──
-    send_admin_notification(user_email, app_name, request_id)
+    threading.Thread(
+        target=send_admin_notification,
+        args=(user_email, app_name, request_id),
+        daemon=True
+    ).start()
 
     return jsonify({"success": True, "message": f"Request received. Admin will review and send credentials to {user_email} shortly."})
 
@@ -167,9 +172,15 @@ def approve_request(request_id):
     token_id = token_ref[1].id
 
     portal_link = f"{os.getenv('PORTAL_BASE_URL')}/access/{token_id}"
-    send_credentials_email(user_email, app_name, app_doc["url"], psk, portal_link)
 
-    # ── Update request status ──
+    # Send email in background thread so it doesn't block/timeout
+    threading.Thread(
+        target=send_credentials_email,
+        args=(user_email, app_name, app_doc["url"], psk, portal_link),
+        daemon=True
+    ).start()
+
+    # Update request status
     req_ref.update({
         "status":      "approved",
         "reviewed_at": datetime.now(timezone.utc),
