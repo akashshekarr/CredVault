@@ -215,7 +215,7 @@
     </div>
   </div>
 
-  <!-- ROW 2: Active Tokens + Access by App -->
+  <!-- ROW 2: Active Tokens + Users per App -->
   <div class="grid-2">
     <div class="panel">
       <div class="panel-head">
@@ -226,19 +226,11 @@
     </div>
     <div class="panel">
       <div class="panel-head">
-        <span class="panel-title">Access Frequency by App</span>
+        <span class="panel-title">Users per Application</span>
+        <span style="font-size:10px;color:var(--muted);font-family:monospace">who is using what</span>
       </div>
-      <div style="padding:14px 16px" id="freqPanel"><div class="loading">computing...</div></div>
+      <div id="usersPerAppPanel"><div class="loading">computing...</div></div>
     </div>
-  </div>
-
-  <!-- ROW 3: Users per App -->
-  <div class="panel" style="margin-bottom:14px">
-    <div class="panel-head">
-      <span class="panel-title">Users per Application</span>
-      <span style="font-size:10px;color:var(--muted);font-family:monospace">who is using what</span>
-    </div>
-    <div id="usersPerAppPanel"><div class="loading">computing...</div></div>
   </div>
 
 </div>
@@ -351,7 +343,7 @@
     document.getElementById('sAccesses').textContent = logs.length;
     document.getElementById('sUsers').textContent = new Set(logs.map(l=>l.user_email).filter(Boolean)).size;
     filterLogs();
-    renderFreq(logs);
+    renderUsersPerApp(logs);
   }
 
   function filterLogs(){
@@ -401,22 +393,6 @@
     }).join('');
   }
 
-  /* ── FREQ BARS ── */
-  function renderFreq(logs){
-    const counts={};
-    logs.forEach(l=>{if(l.app_name)counts[l.app_name]=(counts[l.app_name]||0)+1;});
-    const sorted=Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,8);
-    const max=sorted[0]?.[1]||1;
-    const el=document.getElementById('freqPanel');
-    if(!sorted.length){el.innerHTML='<div class="empty">no access data yet</div>';return;}
-    el.innerHTML=sorted.map(([name,cnt])=>`
-      <div class="stat-bar-row">
-        <div class="stat-bar-meta"><span class="stat-bar-name">${name}</span><span class="stat-bar-cnt">${cnt}</span></div>
-        <div class="stat-bar-bg"><div class="stat-bar-fill" style="width:${Math.round((cnt/max)*100)}%;background:${colorFor(name)}"></div></div>
-      </div>`).join('');
-    renderUsersPerApp(logs);
-  }
-
   /* ── USERS PER APP ── */
   function renderUsersPerApp(logs){
     const appUsers = {};
@@ -430,19 +406,19 @@
     const el = document.getElementById('usersPerAppPanel');
     const apps = Object.entries(appUsers).sort((a,b) => b[1].size - a[1].size);
     if(!apps.length){ el.innerHTML='<div class="empty">no access data yet</div>'; return; }
-    el.innerHTML = `<div class="app-users-grid">${apps.map(([appName, users]) => {
+    el.innerHTML = apps.map(([appName, users]) => {
       const userList = [...users];
-      return `<div class="app-users-card">
-        <div class="app-users-header">
-          <div class="app-users-avatar" style="background:${colorFor(appName)}22;color:${colorFor(appName)}">${initials(appName)}</div>
-          <span class="app-users-name">${appName}</span>
-          <span class="app-users-count">${userList.length} user${userList.length !== 1 ? 's' : ''}</span>
+      return `<div style="padding:12px 16px;border-bottom:1px solid rgba(42,47,58,0.5)">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <div style="width:28px;height:28px;border-radius:7px;background:${colorFor(appName)}22;color:${colorFor(appName)};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">${initials(appName)}</div>
+          <span style="font-size:13px;font-weight:600;flex:1">${appName}</span>
+          <span style="font-size:11px;font-family:monospace;color:var(--amber)">${userList.length} user${userList.length!==1?'s':''}</span>
         </div>
-        <div class="app-users-list">
-          ${userList.map(u => `<span class="user-chip">${u.split('@')[0]}</span>`).join('')}
+        <div style="display:flex;flex-wrap:wrap;gap:5px">
+          ${userList.map(u=>`<span style="font-size:10px;font-family:monospace;background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:2px 7px">${u.split('@')[0]}</span>`).join('')}
         </div>
       </div>`;
-    }).join('')}</div>`;
+    }).join('');
   }
 
   /* ── MODAL: view app ── */
