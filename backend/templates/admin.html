@@ -209,6 +209,7 @@
           <option value="credentials_sent">credentials_sent</option>
           <option value="credentials_accessed">credentials_accessed</option>
           <option value="access_rejected">access_rejected</option>
+          <option value="domain_rejected">domain_rejected</option>
         </select>
       </div>
       <div id="logsPanel"><div class="loading">fetching logs...</div></div>
@@ -358,7 +359,7 @@
     el.innerHTML = `<div style="overflow-x:auto"><table>
       <thead><tr><th>User</th><th>App</th><th>Action</th><th>Time</th></tr></thead>
       <tbody>${filtered.slice(0,30).map(l=>{
-        const cls = (l.action||'').includes('accessed') ? 'badge-g' : (l.action||'').includes('rejected') ? 'badge-r' : 'badge-a';
+        const cls = (l.action||'').includes('accessed') ? 'badge-g' : (l.action||'').includes('rejected') || (l.action||'').includes('domain') ? 'badge-r' : 'badge-a';
         return `<tr>
           <td><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${colorFor(l.user_email||'')};margin-right:6px;vertical-align:middle"></span>${(l.user_email||'').split('@')[0]}</td>
           <td>${l.app_name||'—'}</td>

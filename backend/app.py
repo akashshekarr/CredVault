@@ -83,6 +83,12 @@ def process_request():
     # ── Domain verification ──
     if not is_allowed_email(user_email):
         domain = user_email.split('@')[-1]
+        db.collection("audit_logs").add({
+            "user_email": user_email,
+            "app_name":   app_name,
+            "action":     "domain_rejected",
+            "timestamp":  datetime.now(timezone.utc)
+        })
         return jsonify({"error": f"Access denied. '{domain}' is not an authorized domain. Only 5cnetwork.com and 5cnetwork.in emails are allowed."}), 403
 
     # ── Check app exists ──
