@@ -13,7 +13,14 @@ load_dotenv()
 
 app = Flask(__name__, template_folder="templates")
 
-cred = credentials.Certificate(os.getenv("FIREBASE_CREDENTIALS_PATH"))
+# Support both file-based and env-based Firebase credentials
+firebase_creds_json = os.getenv("FIREBASE_CREDENTIALS_JSON")
+if firebase_creds_json:
+    cred_dict = json.loads(firebase_creds_json)
+    cred = credentials.Certificate(cred_dict)
+else:
+    cred = credentials.Certificate(os.getenv("FIREBASE_CREDENTIALS_PATH"))
+
 firebase_admin.initialize_app(cred, {'projectId': 'credvault-39b1f'})
 db = firestore.client(database_id='credvault')
 
