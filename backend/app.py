@@ -24,6 +24,51 @@ else:
 firebase_admin.initialize_app(cred, {'projectId': 'credvault-39b1f'})
 db = firestore.client(database_id='credvault')
 
+ALLOWED_DOMAINS = ['5cnetwork.com', '5cnetwork.in']
+ADMIN_EMAIL = 'akash@5cnetwork.com'
+
+
+def is_allowed_email(email):
+    domain = email.split('@')[-1].lower()
+    return domain in ALLOWED_DOMAINS
+
+
+def send_admin_notification(user_email, app_name, request_id):
+    """Send email to admin about pending approval request."""
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+
+    gmail_user = os.getenv('GMAIL_USER')
+    gmail_password = os.getenv('GMAIL_APP_PASSWORD')
+    approve_url = f"{os.getenv('PORTAL_BASE_URL')}/admin"
+
+    msg = MIMEMultipart('alternative')
+    msg['Subject'] = f"[CredVault] Approval Required: {user_email} → {app_name}"
+    msg['From'] = gmail_user
+    msg['To'] = ADMIN_EMAIL
+
+    html = f"""
+    <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;padding:20px">
+      <h2 style="color:#EF9F27">CredVault — Approval Required</h2>
+      <p><strong>{user_email}</strong> has requested access to <strong>{app_name}</strong>.</p>
+      <p>Request ID: <code>{request_id}</code></p>
+      <p>Please log in to the admin dashboard to approve or reject:</p>
+      <a href="{approve_url}" style="background:#EF9F27;color:#000;padding:10px 20px;text-decoration:none;border-radius:6px;font-weight:bold;display:inline-block;margin-top:10px">
+        Open Admin Dashboard
+      </a>
+      <p style="color:#999;font-size:12px;margin-top:20px">CredVault · 5C Network</p>
+    </div>
+    """
+
+    msg.attach(MIMEText(html, 'html'))
+
+    try:
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+            server.login(gmail_user, gmail_password)
+            server.sendmail(gmail_user, ADMIN_EMAIL, msg.as_string())
+    except Exception as e:
+        print(f"Admin notification email failed: {e}")
 
 
 @app.route("/api/process-request", methods=["POST"])
@@ -35,6 +80,58 @@ def process_request():
     if not user_email or not app_name:
         return jsonify({"error": "user_email and app_name are required"}), 400
 
+    # ── Domain verification ──
+    if not is_allowed_email(user_email):
+        domain = user_email.split('@')[-1]
+        return jsonify({"error": f"Access denied. '{domain}' is not an authorized domain. Only 5cnetwork.com and 5cnetwork.in emails are allowed."}), 403
+
+    # ── Check app exists ──
+    results = db.collection("applications").where("name", "==", app_name).get()
+    if not results:
+        return jsonify({"error": f"App '{app_name}' not found"}), 404
+
+    # ── Save as pending request ──
+    req_ref = db.collection("pending_requests").add({
+        "user_email": user_email,
+        "app_name":   app_name,
+        "status":     "pending",
+        "created_at": datetime.now(timezone.utc),
+        "reviewed_at": None,
+        "reviewed_by": None,
+    })
+    request_id = req_ref[1].id
+
+    # ── Log the request ──
+    db.collection("audit_logs").add({
+        "user_email": user_email,
+        "app_name":   app_name,
+        "action":     "access_requested",
+        "timestamp":  datetime.now(timezone.utc)
+    })
+
+    # ── Notify admin via email ──
+    send_admin_notification(user_email, app_name, request_id)
+
+    return jsonify({"success": True, "message": f"Request received. Admin will review and send credentials to {user_email} shortly."})
+
+
+@app.route("/api/admin/approve/<request_id>", methods=["POST"])
+def approve_request(request_id):
+    req_ref  = db.collection("pending_requests").document(request_id)
+    req_doc  = req_ref.get()
+
+    if not req_doc.exists:
+        return jsonify({"error": "Request not found"}), 404
+
+    req = req_doc.to_dict()
+
+    if req.get("status") != "pending":
+        return jsonify({"error": f"Request already {req.get('status')}"}), 400
+
+    user_email = req["user_email"]
+    app_name   = req["app_name"]
+
+    # ── Get app credentials ──
     results = db.collection("applications").where("name", "==", app_name).get()
     if not results:
         return jsonify({"error": f"App '{app_name}' not found"}), 404
@@ -66,14 +163,48 @@ def process_request():
     portal_link = f"{os.getenv('PORTAL_BASE_URL')}/access/{token_id}"
     send_credentials_email(user_email, app_name, app_doc["url"], psk, portal_link)
 
+    # ── Update request status ──
+    req_ref.update({
+        "status":      "approved",
+        "reviewed_at": datetime.now(timezone.utc),
+    })
+
     db.collection("audit_logs").add({
         "user_email": user_email,
         "app_name":   app_name,
         "action":     "credentials_sent",
-        "timestamp":  datetime.utcnow()
+        "timestamp":  datetime.now(timezone.utc)
     })
 
-    return jsonify({"success": True, "message": f"Credentials sent to {user_email}"})
+    return jsonify({"success": True, "message": f"Approved. Credentials sent to {user_email}"})
+
+
+@app.route("/api/admin/reject/<request_id>", methods=["POST"])
+def reject_request(request_id):
+    req_ref = db.collection("pending_requests").document(request_id)
+    req_doc = req_ref.get()
+
+    if not req_doc.exists:
+        return jsonify({"error": "Request not found"}), 404
+
+    req = req_doc.to_dict()
+
+    if req.get("status") != "pending":
+        return jsonify({"error": f"Request already {req.get('status')}"}), 400
+
+    req_ref.update({
+        "status":      "rejected",
+        "reviewed_at": datetime.now(timezone.utc),
+    })
+
+    db.collection("audit_logs").add({
+        "user_email": req["user_email"],
+        "app_name":   req["app_name"],
+        "action":     "access_rejected",
+        "timestamp":  datetime.now(timezone.utc)
+    })
+
+    return jsonify({"success": True, "message": "Request rejected."})
 
 
 @app.route("/access/<token_id>", methods=["GET", "POST"])
@@ -94,8 +225,11 @@ def access_portal(token_id):
         return jsonify({"error": "This link has already been used. Contact IT for a new one."}), 400
 
     exp = token.get("expires_at")
-    if exp and datetime.now(timezone.utc) > exp.replace(tzinfo=timezone.utc):
-        return jsonify({"error": "This link has expired. Please request again."}), 400
+    if exp:
+        if exp.tzinfo is None:
+            exp = exp.replace(tzinfo=timezone.utc)
+        if datetime.now(timezone.utc) > exp:
+            return jsonify({"error": "This link has expired. Please request again."}), 400
 
     if hashlib.sha256(psk_input.encode()).hexdigest() != token["psk_hash"]:
         return jsonify({"error": "Incorrect key. Please check your email."}), 401
@@ -107,7 +241,7 @@ def access_portal(token_id):
         "user_email": token["user_email"],
         "app_name":   token["app_name"],
         "action":     "credentials_accessed",
-        "timestamp":  datetime.utcnow()
+        "timestamp":  datetime.now(timezone.utc)
     })
 
     return jsonify({"success": True, "credentials": decrypted})
@@ -150,7 +284,7 @@ def add_application():
         "url":        data["url"],
         "username":   data["username"],
         "password":   data["password"],
-        "created_at": datetime.utcnow()
+        "created_at": datetime.now(timezone.utc)
     })
     return jsonify({"success": True})
 
@@ -164,6 +298,22 @@ def admin_tokens():
         d["id"] = t.id
         for key in ("expires_at", "created_at"):
             if key in d and hasattr(d[key], "isoformat"):
+                d[key] = d[key].isoformat()
+        result.append(d)
+    return jsonify(result)
+
+
+@app.route("/admin/pending", methods=["GET"])
+def admin_pending():
+    reqs = db.collection("pending_requests") \
+             .order_by("created_at", direction=firestore.Query.DESCENDING) \
+             .limit(100).get()
+    result = []
+    for r in reqs:
+        d = r.to_dict()
+        d["id"] = r.id
+        for key in ("created_at", "reviewed_at"):
+            if key in d and d[key] and hasattr(d[key], "isoformat"):
                 d[key] = d[key].isoformat()
         result.append(d)
     return jsonify(result)
