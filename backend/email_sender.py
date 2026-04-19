@@ -47,8 +47,11 @@ def send_credentials_email(to_email, app_name, app_url, psk, portal_link):
     msg.attach(MIMEText(html_body, "html"))
 
     try:
-        print("[EMAIL] Connecting to smtp.gmail.com:465 ...")
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        print("[EMAIL] Connecting to smtp.gmail.com:587 ...")
+        with smtplib.SMTP("smtp.gmail.com", 587) as server:
+            server.ehlo()
+            server.starttls()
+            server.ehlo()
             print("[EMAIL] Connected. Logging in...")
             server.login(sender, password)
             print("[EMAIL] Logged in. Sending...")
