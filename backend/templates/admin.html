@@ -371,11 +371,14 @@
   overlay.style.alignItems = 'center';
   overlay.style.justifyContent = 'center';
 }
-  function closeModal(){
-    document.getElementById('modalOverlay').classList.remove('open');
-  }
+ function closeModal(){
+  const overlay = document.getElementById('modalOverlay');
+  overlay.style.display = 'none';
+}
   document.getElementById('modalCloseBtn').addEventListener('click', closeModal);
-  document.getElementById('modalOverlay').addEventListener('click', function(e){ if(e.target===this) closeModal(); });
+document.getElementById('modalOverlay').addEventListener('click', function(e){ 
+  if(e.target === this) closeModal(); 
+});
 
   /* ── ADD APP ── */
   document.getElementById('addAppBtn').addEventListener('click', function(){
