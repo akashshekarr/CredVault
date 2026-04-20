@@ -152,14 +152,15 @@
 
     /* ===== MODAL FIX ===== */
     .modal-overlay {
-      position: fixed;
-      top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(3,5,10,0.85);
-      z-index: 99999;
-      display: none;
-      align-items: center;
-      justify-content: center;
-    }
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(3,5,10,0.85);
+  z-index: 99999;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  transform: none !important;  /* ADD THIS */
+}
     .modal-overlay.open {
       display: flex;
     }
@@ -357,11 +358,19 @@
 
   /* ── MODAL ── */
   function openModal(title, bodyHTML, footHTML){
-    document.getElementById('modalTitle').textContent = title;
-    document.getElementById('modalBody').innerHTML = bodyHTML;
-    document.getElementById('modalFoot').innerHTML = footHTML;
-    document.getElementById('modalOverlay').classList.add('open');
-  }
+  document.getElementById('modalTitle').textContent = title;
+  document.getElementById('modalBody').innerHTML = bodyHTML;
+  document.getElementById('modalFoot').innerHTML = footHTML;
+  const overlay = document.getElementById('modalOverlay');
+  overlay.style.position = 'fixed';
+  overlay.style.top = '0';
+  overlay.style.left = '0';
+  overlay.style.width = '100vw';
+  overlay.style.height = '100vh';
+  overlay.style.display = 'flex';
+  overlay.style.alignItems = 'center';
+  overlay.style.justifyContent = 'center';
+}
   function closeModal(){
     document.getElementById('modalOverlay').classList.remove('open');
   }
