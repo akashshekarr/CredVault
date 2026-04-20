@@ -922,6 +922,7 @@
         <div class="pending-info">
           <div class="pending-user">${(p.user_email||'').split('@')[0]}</div>
           <div class="pending-app">→ ${p.app_name || '—'}</div>
+          ${p.reason ? `<div style="font-size:11px;color:#aab3c8;font-family:sans-serif;margin-top:6px;padding:6px 10px;background:rgba(255,255,255,0.04);border-radius:6px;border-left:2px solid #58E6D9">${p.reason}</div>` : ''}
           <div class="pending-time">${fmtDate(p.requested_at)}</div>
         </div>
         <div class="pending-actions">

@@ -99,10 +99,11 @@ def process_request():
 
     # ── Save as pending request ──
     req_ref = db.collection("pending_requests").add({
-        "user_email": user_email,
-        "app_name":   app_name,
-        "status":     "pending",
-        "created_at": datetime.now(timezone.utc),
+        "user_email":  user_email,
+        "app_name":    app_name,
+        "reason":      data.get("reason", "").strip(),
+        "status":      "pending",
+        "created_at":  datetime.now(timezone.utc),
         "reviewed_at": None,
         "reviewed_by": None,
     })
