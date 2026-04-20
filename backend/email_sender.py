@@ -1,28 +1,17 @@
-import smtplib
 import os
 import traceback
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
+import requests
 from dotenv import load_dotenv
 
 load_dotenv()
 
 def send_credentials_email(to_email, app_name, app_url, psk, portal_link):
-    sender = os.getenv("GMAIL_USER")
-    password = os.getenv("GMAIL_APP_PASSWORD")
-
     print(f"[EMAIL] Attempting to send to {to_email} for {app_name}")
-    print(f"[EMAIL] Sender: {sender}")
-    print(f"[EMAIL] Portal: {portal_link}")
 
-    if not sender or not password:
-        print("[EMAIL] ERROR: GMAIL_USER or GMAIL_APP_PASSWORD not set!")
+    api_key = os.getenv("RESEND_API_KEY")
+    if not api_key:
+        print("[EMAIL] ERROR: RESEND_API_KEY not set!")
         return
-
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = f"Your access credentials for {app_name}"
-    msg["From"] = sender
-    msg["To"] = to_email
 
     html_body = f"""
     <html><body style="font-family:sans-serif;max-width:500px;margin:auto">
@@ -44,23 +33,25 @@ def send_credentials_email(to_email, app_name, app_url, psk, portal_link):
     </body></html>
     """
 
-    msg.attach(MIMEText(html_body, "html"))
-
     try:
-        print("[EMAIL] Connecting to smtp.gmail.com:587 ...")
-        with smtplib.SMTP("smtp.gmail.com", 587) as server:
-            server.ehlo()
-            server.starttls()
-            server.ehlo()
-            print("[EMAIL] Connected. Logging in...")
-            server.login(sender, password)
-            print("[EMAIL] Logged in. Sending...")
-            server.sendmail(sender, to_email, msg.as_string())
+        response = requests.post(
+            "https://api.resend.com/emails",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "from": "CredVault IT Support <onboarding@resend.dev>",
+                "to": [to_email],
+                "subject": f"Your access credentials for {app_name}",
+                "html": html_body
+            },
+            timeout=30
+        )
+        if response.status_code == 200:
             print(f"[EMAIL] SUCCESS - sent to {to_email}")
-    except smtplib.SMTPAuthenticationError as e:
-        print(f"[EMAIL] AUTH ERROR - check GMAIL_USER and GMAIL_APP_PASSWORD: {e}")
-    except smtplib.SMTPException as e:
-        print(f"[EMAIL] SMTP ERROR: {e}")
+        else:
+            print(f"[EMAIL] ERROR - status {response.status_code}: {response.text}")
     except Exception as e:
         print(f"[EMAIL] UNEXPECTED ERROR: {e}")
         traceback.print_exc()

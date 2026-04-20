@@ -964,7 +964,7 @@ async function reject(id){  try { await post('/api/admin/reject/'+id, {});  load
   function filterLogs(){
     const q = (document.getElementById('logSearch').value||'').toLowerCase();
     const f = document.getElementById('logFilter').value;
-    let rows = allLogs.slice().reverse();
+    let rows = allLogs.slice();
     if (f) rows = rows.filter(l => (l.action||'') === f);
     if (q) rows = rows.filter(l => JSON.stringify(l).toLowerCase().includes(q));
     rows = rows.slice(0, 80);
