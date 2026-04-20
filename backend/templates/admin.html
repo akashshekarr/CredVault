@@ -521,15 +521,19 @@
 
     /* ===== Modal ===== */
     .overlay {
-      position: fixed; inset: 0;
-      background: rgba(3,5,10,0.72);
-      backdrop-filter: blur(8px);
-      -webkit-backdrop-filter: blur(8px);
-      display: none; align-items: center; justify-content: center;
-      z-index: 200;
-    }
-    .overlay.open { display: flex; animation: fadeIn 0.2s ease; }
-    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  position: fixed; inset: 0;
+  background: rgba(3,5,10,0.72);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: none;
+  z-index: 200;
+}
+.overlay.open { 
+  display: flex; 
+  align-items: center; 
+  justify-content: center;
+  animation: fadeIn 0.2s ease; 
+}
 
     .modal {
       background: linear-gradient(180deg, var(--surface), var(--bg-soft));
