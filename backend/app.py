@@ -313,6 +313,7 @@ def admin_tokens():
 @app.route("/admin/pending", methods=["GET"])
 def admin_pending():
     reqs = db.collection("pending_requests") \
+             .where("status", "==", "pending") \
              .order_by("created_at", direction=firestore.Query.DESCENDING) \
              .limit(100).get()
     result = []
