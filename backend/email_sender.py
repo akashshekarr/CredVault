@@ -8,9 +8,11 @@ load_dotenv()
 def send_credentials_email(to_email, app_name, app_url, psk, portal_link):
     print(f"[EMAIL] Attempting to send to {to_email} for {app_name}")
 
-    api_key = os.getenv("RESEND_API_KEY")
+    api_key = os.getenv("MANDRILL_API_KEY")
+    sender  = os.getenv("GMAIL_USER", "akash@5cnetwork.com")
+
     if not api_key:
-        print("[EMAIL] ERROR: RESEND_API_KEY not set!")
+        print("[EMAIL] ERROR: MANDRILL_API_KEY not set!")
         return
 
     html_body = f"""
@@ -33,25 +35,28 @@ def send_credentials_email(to_email, app_name, app_url, psk, portal_link):
     </body></html>
     """
 
+    payload = {
+        "key": api_key,
+        "message": {
+            "html":       html_body,
+            "subject":    f"Your access credentials for {app_name}",
+            "from_email": sender,
+            "from_name":  "5C Network IT Support",
+            "to": [{"email": to_email, "type": "to"}]
+        }
+    }
+
     try:
         response = requests.post(
-            "https://api.resend.com/emails",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json"
-            },
-            json={
-                "from": "CredVault IT Support <onboarding@resend.dev>",
-                "to": [to_email],
-                "subject": f"Your access credentials for {app_name}",
-                "html": html_body
-            },
+            "https://mandrillapp.com/api/1.0/messages/send",
+            json=payload,
             timeout=30
         )
-        if response.status_code == 200:
+        result = response.json()
+        if isinstance(result, list) and result[0].get("status") in ("sent", "queued"):
             print(f"[EMAIL] SUCCESS - sent to {to_email}")
         else:
-            print(f"[EMAIL] ERROR - status {response.status_code}: {response.text}")
+            print(f"[EMAIL] ERROR - {result}")
     except Exception as e:
         print(f"[EMAIL] UNEXPECTED ERROR: {e}")
         traceback.print_exc()
