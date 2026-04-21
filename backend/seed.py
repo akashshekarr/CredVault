@@ -1,13 +1,21 @@
-import firebase_admin
-from firebase_admin import credentials, firestore
+import pg8000.native
+from urllib.parse import urlparse
 from dotenv import load_dotenv
 import os
 
 load_dotenv()
 
-cred = credentials.Certificate(os.getenv("FIREBASE_CREDENTIALS_PATH"))
-firebase_admin.initialize_app(cred, {'projectId': 'credvault-39b1f'})
-db = firestore.client(database_id='credvault')
+DATABASE_URL = os.getenv("DATABASE_URL")
+url = urlparse(DATABASE_URL)
+
+conn = pg8000.native.Connection(
+    host=url.hostname,
+    port=url.port or 5432,
+    database=url.path[1:],
+    user=url.username,
+    password=url.password,
+    ssl_context=False  # local connection, no SSL needed
+)
 
 applications = [
     {
@@ -31,7 +39,17 @@ applications = [
 ]
 
 for application in applications:
-    db.collection("applications").add(application)
-    print(f"Added: {application['name']}")
+    try:
+        conn.run(
+            "INSERT INTO applications (name, url, username, password) VALUES (:n, :u, :un, :p) ON CONFLICT (name) DO UPDATE SET url=:u, username=:un, password=:p",
+            n=application['name'],
+            u=application['url'],
+            un=application['username'],
+            p=application['password']
+        )
+        print(f"Added: {application['name']}")
+    except Exception as e:
+        print(f"Error adding {application['name']}: {e}")
 
-print("\nDone! All applications added.")
+conn.close()
+print("\nDone! All applications seeded.")
