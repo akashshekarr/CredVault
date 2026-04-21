@@ -73,9 +73,27 @@ def init_db():
             reason TEXT,
             status TEXT DEFAULT 'pending',
             created_at TIMESTAMPTZ DEFAULT NOW(),
-            reviewed_at TIMESTAMPTZ
+            reviewed_at TIMESTAMPTZ,
+            user_name TEXT,
+            user_designation TEXT,
+            user_department TEXT
         )
     """)
+    conn.run("""
+        CREATE TABLE IF NOT EXISTS users (
+            emp_id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            designation TEXT,
+            department TEXT
+        )
+    """)
+    # Add columns if they don't exist (for existing tables)
+    try:
+        conn.run("ALTER TABLE pending_requests ADD COLUMN IF NOT EXISTS user_name TEXT")
+        conn.run("ALTER TABLE pending_requests ADD COLUMN IF NOT EXISTS user_designation TEXT")
+        conn.run("ALTER TABLE pending_requests ADD COLUMN IF NOT EXISTS user_department TEXT")
+    except:
+        pass
     conn.close()
     print("Database initialized!")
 
@@ -144,9 +162,15 @@ def process_request():
         conn.close()
         return jsonify({"error": f"App '{app_name}' not found"}), 404
 
+    # Lookup user details
+    user_rows = conn.run("SELECT name, designation, department FROM users WHERE LOWER(name) LIKE LOWER(:q) OR LOWER(:email) LIKE LOWER(CONCAT('%', SPLIT_PART(name, ' ', 1), '%')) LIMIT 1", q=f"%{user_email.split('@')[0]}%", email=user_email)
+    user_name = user_rows[0][0] if user_rows else None
+    user_designation = user_rows[0][1] if user_rows else None
+    user_department = user_rows[0][2] if user_rows else None
+
     request_id = generate_id()
-    conn.run("INSERT INTO pending_requests (id, user_email, app_name, reason, status) VALUES (:id, :e, :a, :r, 'pending')",
-             id=request_id, e=user_email, a=app_name, r=reason)
+    conn.run("INSERT INTO pending_requests (id, user_email, app_name, reason, status, user_name, user_designation, user_department) VALUES (:id, :e, :a, :r, 'pending', :un, :ud, :udept)",
+             id=request_id, e=user_email, a=app_name, r=reason, un=user_name, ud=user_designation, udept=user_department)
     conn.run("INSERT INTO audit_logs (user_email, app_name, action) VALUES (:e, :a, :ac)",
              e=user_email, a=app_name, ac="access_requested")
     conn.close()
@@ -317,17 +341,41 @@ def admin_tokens():
 @app.route("/admin/pending", methods=["GET"])
 def admin_pending():
     conn = get_db()
-    rows = conn.run("SELECT id, user_email, app_name, reason, status, created_at FROM pending_requests WHERE status='pending' ORDER BY created_at DESC LIMIT 100")
+    rows = conn.run("SELECT id, user_email, app_name, reason, status, created_at, user_name, user_designation, user_department FROM pending_requests WHERE status='pending' ORDER BY created_at DESC LIMIT 100")
     conn.close()
     result = []
     for r in rows:
         result.append({
             "id": r[0], "user_email": r[1], "app_name": r[2],
             "reason": r[3], "status": r[4],
-            "created_at": r[5].isoformat() if r[5] else None
+            "created_at": r[5].isoformat() if r[5] else None,
+            "user_name": r[6], "user_designation": r[7], "user_department": r[8]
         })
     return jsonify(result)
 
+
+
+
+@app.route("/admin/users", methods=["GET"])
+def admin_users():
+    conn = get_db()
+    rows = conn.run("SELECT emp_id, name, designation, department FROM users ORDER BY name")
+    conn.close()
+    return jsonify([{"emp_id": r[0], "name": r[1], "designation": r[2], "department": r[3]} for r in rows])
+
+
+@app.route("/admin/users", methods=["POST"])
+def add_user():
+    data = request.json
+    if not data.get("name"):
+        return jsonify({"error": "name is required"}), 400
+    import uuid
+    emp_id = data.get("emp_id") or str(uuid.uuid4())[:8]
+    conn = get_db()
+    conn.run("INSERT INTO users (emp_id, name, designation, department) VALUES (:id, :n, :d, :dept) ON CONFLICT (emp_id) DO UPDATE SET name=:n, designation=:d, department=:dept",
+             id=emp_id, n=data['name'], d=data.get('designation',''), dept=data.get('department',''))
+    conn.close()
+    return jsonify({"success": True})
 
 @app.route("/admin", methods=["GET"])
 def admin_dashboard():

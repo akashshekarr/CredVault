@@ -149,63 +149,21 @@
     .footer-mark span{color:var(--cyan)}
     @media(max-width:1100px){.stats{grid-template-columns:repeat(3,1fr)}.grid-2-3,.grid-2{grid-template-columns:1fr}.vault-svg{width:100px;height:100px}.hero-title{font-size:26px}}
     @media(max-width:640px){.header{padding:12px 16px}.main{padding:18px 16px 40px}.stats{grid-template-columns:repeat(2,1fr);gap:10px}.stat-val{font-size:30px}.logo-tag{display:none}.vault-svg{display:none}.hero{padding:18px}.hero-title{font-size:22px}}
-
-    /* ===== MODAL FIX ===== */
-    .modal-overlay {
-  position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(3,5,10,0.85);
-  z-index: 99999;
-  display: none;
-  align-items: center;
-  justify-content: center;
-  transform: none !important;  /* ADD THIS */
-}
-    .modal-overlay.open {
-      display: flex;
-    }
-    .modal-box {
-      background: linear-gradient(180deg,var(--surface),var(--bg-soft));
-      border: 1px solid var(--border);
-      border-radius: 18px;
-      width: 480px;
-      max-width: 95vw;
-      overflow: hidden;
-      box-shadow: 0 40px 100px -20px rgba(0,0,0,0.8), 0 0 60px -20px rgba(155,123,255,0.4);
-      position: relative;
-    }
-    .modal-box::before {
-      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
-      background: linear-gradient(90deg,var(--cyan),var(--violet),var(--pink));
-    }
-    .modal-head-inner {
-      padding: 18px 22px;
-      border-bottom: 1px solid var(--border-soft);
-      display: flex; align-items: center; justify-content: space-between;
-    }
-    .modal-title-text {
-      font-family: 'Fraunces', serif;
-      font-size: 22px; font-weight: 400;
-      color: var(--text);
-    }
-    .modal-close-btn {
-      background: none; border: none; color: var(--muted);
-      font-size: 24px; cursor: pointer; line-height: 1;
-      transition: color 0.18s;
-    }
-    .modal-close-btn:hover { color: var(--cyan); }
-    .modal-body-inner { padding: 22px; }
-    .modal-foot-inner {
-      padding: 14px 22px;
-      border-top: 1px solid var(--border-soft);
-      display: flex; gap: 10px; justify-content: flex-end;
-      background: rgba(255,255,255,0.018);
-    }
-    .field { margin-bottom: 16px; }
-    .field-label { font-size: 10px; font-family: 'JetBrains Mono',monospace; color: var(--muted); letter-spacing: 0.14em; text-transform: uppercase; margin-bottom: 6px; }
-    .field-val { font-size: 13px; font-family: 'JetBrains Mono',monospace; color: var(--text); }
-    .field-val.link { color: var(--cyan); text-decoration: none; }
-    .field-val.dim { color: var(--muted); font-size: 11px; }
+    .modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(3,5,10,0.85);z-index:99999;display:none;align-items:center;justify-content:center}
+    .modal-overlay.open{display:flex}
+    .modal-box{background:linear-gradient(180deg,var(--surface),var(--bg-soft));border:1px solid var(--border);border-radius:18px;width:480px;max-width:95vw;overflow:hidden;box-shadow:0 40px 100px -20px rgba(0,0,0,0.8),0 0 60px -20px rgba(155,123,255,0.4);position:relative}
+    .modal-box::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--cyan),var(--violet),var(--pink))}
+    .modal-head-inner{padding:18px 22px;border-bottom:1px solid var(--border-soft);display:flex;align-items:center;justify-content:space-between}
+    .modal-title-text{font-family:'Fraunces',serif;font-size:22px;font-weight:400;color:var(--text)}
+    .modal-close-btn{background:none;border:none;color:var(--muted);font-size:24px;cursor:pointer;line-height:1;transition:color 0.18s}
+    .modal-close-btn:hover{color:var(--cyan)}
+    .modal-body-inner{padding:22px}
+    .modal-foot-inner{padding:14px 22px;border-top:1px solid var(--border-soft);display:flex;gap:10px;justify-content:flex-end;background:rgba(255,255,255,0.018)}
+    .field{margin-bottom:16px}
+    .field-label{font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:0.14em;text-transform:uppercase;margin-bottom:6px}
+    .field-val{font-size:13px;font-family:'JetBrains Mono',monospace;color:var(--text)}
+    .field-val.link{color:var(--cyan);text-decoration:none}
+    .field-val.dim{color:var(--muted);font-size:11px}
   </style>
 </head>
 <body>
@@ -303,7 +261,10 @@
         <div id="tokensPanel"><div class="loading">loading tokens...</div></div>
       </div>
       <div class="panel">
-        <div class="panel-head"><div class="panel-title">Users per Application</div><span class="stat-note">who is using what</span></div>
+        <div class="panel-head">
+          <div class="panel-title">Users per Application</div>
+          <button class="btn btn-sm" id="addUserBtn">+ Add User</button>
+        </div>
         <div id="usersPerAppPanel"><div class="loading">computing...</div></div>
       </div>
     </section>
@@ -311,7 +272,6 @@
     <div class="footer-mark">⬢ <span>CredVault</span> · encrypted at rest · audited in motion</div>
   </main>
 
-  <!-- MODAL — completely separate from all z-index stacking contexts -->
   <div class="modal-overlay" id="modalOverlay">
     <div class="modal-box">
       <div class="modal-head-inner">
@@ -324,7 +284,6 @@
   </div>
 
 <script>
-  /* ── Particles ── */
   (function(){
     const root=document.getElementById('particles'); if(!root) return;
     for(let i=0;i<22;i++){
@@ -339,7 +298,7 @@
     }
   })();
 
-  let allApps=[],allLogs=[],allTokens=[];
+  let allApps=[],allLogs=[],allTokens=[],allUsers=[];
   const COLORS=['#58E6D9','#9B7BFF','#4FE39B','#FF7AC6','#FFB547','#4A9BFF','#FF5C7A','#C9A9FF'];
   const initials=(s='')=>s.trim().split(/\s+/).map(w=>w[0]||'').slice(0,2).join('').toUpperCase()||'?';
   const colorFor=(s='')=>{let h=0;for(const c of s)h=(h*31+c.charCodeAt(0))>>>0;return COLORS[h%COLORS.length];};
@@ -356,43 +315,29 @@
   function showErr(m){const e=document.getElementById('errBanner');e.textContent=m;e.style.display='block';}
   function hideErr(){document.getElementById('errBanner').style.display='none';}
 
-  /* ── MODAL ── */
-  function openModal(title, bodyHTML, footHTML){
-  document.getElementById('modalTitle').textContent = title;
-  document.getElementById('modalBody').innerHTML = bodyHTML;
-  document.getElementById('modalFoot').innerHTML = footHTML;
-  const overlay = document.getElementById('modalOverlay');
-  overlay.style.position = 'fixed';
-  overlay.style.top = '0';
-  overlay.style.left = '0';
-  overlay.style.width = '100vw';
-  overlay.style.height = '100vh';
-  overlay.style.display = 'flex';
-  overlay.style.alignItems = 'center';
-  overlay.style.justifyContent = 'center';
-}
- function closeModal(){
-  const overlay = document.getElementById('modalOverlay');
-  overlay.style.display = 'none';
-}
-  document.getElementById('modalCloseBtn').addEventListener('click', closeModal);
-document.getElementById('modalOverlay').addEventListener('click', function(e){ 
-  if(e.target === this) closeModal(); 
-});
+  function openModal(title,bodyHTML,footHTML){
+    document.getElementById('modalTitle').textContent=title;
+    document.getElementById('modalBody').innerHTML=bodyHTML;
+    document.getElementById('modalFoot').innerHTML=footHTML;
+    const o=document.getElementById('modalOverlay');
+    o.style.position='fixed';o.style.top='0';o.style.left='0';
+    o.style.width='100vw';o.style.height='100vh';
+    o.style.display='flex';o.style.alignItems='center';o.style.justifyContent='center';
+  }
+  function closeModal(){document.getElementById('modalOverlay').style.display='none';}
+  document.getElementById('modalCloseBtn').addEventListener('click',closeModal);
+  document.getElementById('modalOverlay').addEventListener('click',function(e){if(e.target===this)closeModal();});
 
   /* ── ADD APP ── */
-  document.getElementById('addAppBtn').addEventListener('click', function(){
-    openModal(
-      'Add New Application',
+  document.getElementById('addAppBtn').addEventListener('click',function(){
+    openModal('Add New Application',
       `<div class="field"><div class="field-label">App Name *</div><input id="fName" class="inp" style="width:100%" placeholder="e.g. Slack"></div>
        <div class="field"><div class="field-label">URL *</div><input id="fUrl" class="inp" style="width:100%" placeholder="https://..."></div>
        <div class="field"><div class="field-label">Username / Email *</div><input id="fUser" class="inp" style="width:100%" placeholder="user@5cnetwork.com"></div>
        <div class="field"><div class="field-label">Password *</div><input id="fPass" type="password" class="inp" style="width:100%"></div>`,
       `<button class="btn" onclick="closeModal()">Cancel</button>
-       <button class="btn btn-primary" onclick="submitApp()">Add to Vault</button>`
-    );
+       <button class="btn btn-primary" onclick="submitApp()">Add to Vault</button>`);
   });
-
   async function submitApp(){
     const name=document.getElementById('fName').value.trim();
     const url=document.getElementById('fUrl').value.trim();
@@ -403,18 +348,36 @@ document.getElementById('modalOverlay').addEventListener('click', function(e){
     catch(e){alert('Error: '+e.message);}
   }
 
+  /* ── ADD USER ── */
+  document.getElementById('addUserBtn').addEventListener('click',function(){
+    openModal('Add New User',
+      `<div class="field"><div class="field-label">Full Name *</div><input id="uName" class="inp" style="width:100%" placeholder="e.g. John Smith"></div>
+       <div class="field"><div class="field-label">Designation</div><input id="uDesig" class="inp" style="width:100%" placeholder="e.g. Software Engineer"></div>
+       <div class="field"><div class="field-label">Department</div><input id="uDept" class="inp" style="width:100%" placeholder="e.g. Engineering"></div>
+       <div class="field"><div class="field-label">Emp ID (optional)</div><input id="uEmpId" class="inp" style="width:100%" placeholder="e.g. 1748"></div>`,
+      `<button class="btn" onclick="closeModal()">Cancel</button>
+       <button class="btn btn-primary" onclick="submitUser()">Add User</button>`);
+  });
+  async function submitUser(){
+    const name=document.getElementById('uName').value.trim();
+    const desig=document.getElementById('uDesig').value.trim();
+    const dept=document.getElementById('uDept').value.trim();
+    const empId=document.getElementById('uEmpId').value.trim();
+    if(!name){alert('Name is required.');return;}
+    try{await post('/admin/users',{name,designation:desig,department:dept,emp_id:empId||null});closeModal();loadAll();}
+    catch(e){alert('Error: '+e.message);}
+  }
+
   /* ── VIEW APP ── */
   function viewApp(id){
     const app=allApps.find(a=>a.id===id); if(!app) return;
-    openModal(
-      app.name,
+    openModal(app.name,
       `<div class="field"><div class="field-label">App Name</div><div class="field-val">${app.name}</div></div>
        <div class="field"><div class="field-label">URL</div><a class="field-val link" href="${app.url||'#'}" target="_blank">${app.url||'—'}</a></div>
        <div class="field"><div class="field-label">Username</div><div class="field-val">${app.username||'—'}</div></div>
        <div class="field"><div class="field-label">Password</div><div class="field-val">••••••••••</div></div>
        <div class="field"><div class="field-label">Document ID</div><div class="field-val dim">${app.id}</div></div>`,
-      `<button class="btn" onclick="closeModal()">Close</button>`
-    );
+      `<button class="btn" onclick="closeModal()">Close</button>`);
   }
 
   /* ── PENDING ── */
@@ -425,8 +388,9 @@ document.getElementById('modalOverlay').addEventListener('click', function(e){
     el.innerHTML=items.map(p=>`
       <div class="pending-card">
         <div class="pending-info">
-          <div class="pending-user">${(p.user_email||'').split('@')[0]}</div>
+          <div class="pending-user">${p.user_name||(p.user_email||'').split('@')[0]}</div>
           <div class="pending-app">→ ${p.app_name||'—'}</div>
+          ${p.user_designation?`<div style="font-size:11px;color:var(--cyan);font-family:monospace;margin-top:2px">${p.user_designation} · ${p.user_department||''}</div>`:''}
           ${p.reason?`<div style="font-size:11px;color:#aab3c8;margin-top:6px;padding:6px 10px;background:rgba(255,255,255,0.04);border-radius:6px;border-left:2px solid #58E6D9">${p.reason}</div>`:''}
           <div class="pending-time">${fmtDate(p.created_at)}</div>
         </div>
@@ -517,7 +481,14 @@ document.getElementById('modalOverlay').addEventListener('click', function(e){
           <div class="app-users-name">${appName}</div>
           <div class="app-users-count">${userList.length} user${userList.length!==1?'s':''}</div>
         </div>
-        <div class="app-users-list">${userList.map(u=>`<span class="user-chip">${u.split('@')[0]}</span>`).join('')}</div>
+        <div class="app-users-list">
+          ${userList.map(u=>{
+            const emailPrefix=u.split('@')[0].toLowerCase();
+            const found=allUsers.find(usr=>usr.name&&usr.name.toLowerCase().split(' ').some(part=>part.startsWith(emailPrefix.substring(0,4))));
+            const display=found?found.name:emailPrefix;
+            return`<span class="user-chip" title="${u}">${display}</span>`;
+          }).join('')}
+        </div>
       </div>`;
     }).join('')+'</div>';
   }
@@ -526,16 +497,17 @@ document.getElementById('modalOverlay').addEventListener('click', function(e){
   async function loadAll(){
     hideErr();setConn(false);
     try{
-      const [apps,logs,tokens,pending]=await Promise.all([
-        get('/admin/applications'),get('/admin/logs'),get('/admin/tokens'),get('/admin/pending'),
+      const [apps,logs,tokens,pending,users]=await Promise.all([
+        get('/admin/applications'),get('/admin/logs'),get('/admin/tokens'),
+        get('/admin/pending'),get('/admin/users'),
       ]);
       setConn(true);
+      allUsers=users;
       renderApps(apps);renderLogs(logs);renderTokens(tokens);renderPending(pending);
     }catch(e){setConn(false);showErr('Cannot reach Flask — make sure the server is running.');}
   }
 
   loadAll();
-  setInterval(loadAll,300000);
 </script>
 </body>
 </html>
