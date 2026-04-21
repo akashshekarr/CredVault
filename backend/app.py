@@ -163,7 +163,8 @@ def process_request():
         return jsonify({"error": f"App '{app_name}' not found"}), 404
 
     # Lookup user details
-    user_rows = conn.run("SELECT name, designation, department FROM users WHERE LOWER(name) LIKE LOWER(:q) OR LOWER(:email) LIKE LOWER(CONCAT('%', SPLIT_PART(name, ' ', 1), '%')) LIMIT 1", q=f"%{user_email.split('@')[0]}%", email=user_email)
+    email_prefix = user_email.split('@')[0].lower().replace('.', ' ')
+    user_rows = conn.run("SELECT name, designation, department FROM users WHERE LOWER(name) LIKE :q LIMIT 1", q=f"%{email_prefix.split(' ')[0]}%")
     user_name = user_rows[0][0] if user_rows else None
     user_designation = user_rows[0][1] if user_rows else None
     user_department = user_rows[0][2] if user_rows else None
