@@ -22,7 +22,7 @@ if firebase_creds_json:
 else:
     cred = credentials.Certificate(os.getenv("FIREBASE_CREDENTIALS_PATH"))
 
-firebase_admin.initialize_app(cred, {'projectId': 'credvault-39b1f'})
+firebase_admin.initialize_app(cred, {'projectId': 'credvault-ec7a0'})
 db = firestore.client(database_id='credvault')
 
 ALLOWED_DOMAINS = ['5cnetwork.com', '5cnetwork.in']
