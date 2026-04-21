@@ -275,6 +275,8 @@ def access_portal(token_id):
         conn.close()
         return jsonify({"error": "Incorrect key. Please check your email."}), 401
 
+    if isinstance(encrypted_creds, str):
+     encrypted_creds = json.loads(encrypted_creds)
     decrypted = decrypt_credentials(encrypted_creds, psk_input)
     conn.run("UPDATE psk_tokens SET used=true WHERE id=:id", id=token_id)
     conn.run("INSERT INTO audit_logs (user_email, app_name, action) VALUES (:e, :a, :ac)",
