@@ -3,11 +3,11 @@ import os
 import json
 import hashlib
 import threading
-import psycopg2
-import psycopg2.extras
+import pg8000.native
 from encryption import generate_psk, encrypt_credentials, decrypt_credentials
 from email_sender import send_credentials_email
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlparse
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -15,22 +15,26 @@ load_dotenv()
 app = Flask(__name__, template_folder="templates")
 
 DATABASE_URL = os.getenv("DATABASE_URL")
-
 ALLOWED_DOMAINS = ['5cnetwork.com', '5cnetwork.in']
 ADMIN_EMAIL = 'akash@5cnetwork.com'
 
 
 def get_db():
-    conn = psycopg2.connect(DATABASE_URL)
-    conn.autocommit = True
+    url = urlparse(DATABASE_URL)
+    conn = pg8000.native.Connection(
+        host=url.hostname,
+        port=url.port or 5432,
+        database=url.path[1:],
+        user=url.username,
+        password=url.password,
+        ssl_context=True
+    )
     return conn
 
 
 def init_db():
-    """Create all tables if they don't exist."""
     conn = get_db()
-    cur = conn.cursor()
-    cur.execute("""
+    conn.run("""
         CREATE TABLE IF NOT EXISTS applications (
             id SERIAL PRIMARY KEY,
             name TEXT UNIQUE NOT NULL,
@@ -38,8 +42,9 @@ def init_db():
             username TEXT,
             password TEXT,
             created_at TIMESTAMPTZ DEFAULT NOW()
-        );
-
+        )
+    """)
+    conn.run("""
         CREATE TABLE IF NOT EXISTS psk_tokens (
             id TEXT PRIMARY KEY,
             user_email TEXT,
@@ -49,16 +54,18 @@ def init_db():
             expires_at TIMESTAMPTZ,
             used BOOLEAN DEFAULT FALSE,
             created_at TIMESTAMPTZ DEFAULT NOW()
-        );
-
+        )
+    """)
+    conn.run("""
         CREATE TABLE IF NOT EXISTS audit_logs (
             id SERIAL PRIMARY KEY,
             user_email TEXT,
             app_name TEXT,
             action TEXT,
             timestamp TIMESTAMPTZ DEFAULT NOW()
-        );
-
+        )
+    """)
+    conn.run("""
         CREATE TABLE IF NOT EXISTS pending_requests (
             id TEXT PRIMARY KEY,
             user_email TEXT,
@@ -67,9 +74,8 @@ def init_db():
             status TEXT DEFAULT 'pending',
             created_at TIMESTAMPTZ DEFAULT NOW(),
             reviewed_at TIMESTAMPTZ
-        );
+        )
     """)
-    cur.close()
     conn.close()
     print("Database initialized!")
 
@@ -85,39 +91,27 @@ def generate_id():
 
 
 def send_admin_notification(user_email, app_name, request_id):
-    import smtplib
-    from email.mime.text import MIMEText
-    from email.mime.multipart import MIMEMultipart
-    gmail_user = os.getenv('GMAIL_USER')
-    gmail_password = os.getenv('GMAIL_APP_PASSWORD')
-    approve_url = f"{os.getenv('PORTAL_BASE_URL')}/admin"
-    msg = MIMEMultipart('alternative')
-    msg['Subject'] = f"[CredVault] Approval Required: {user_email} → {app_name}"
-    msg['From'] = gmail_user
-    msg['To'] = ADMIN_EMAIL
-    html = f"""
-    <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;padding:20px">
-      <h2 style="color:#EF9F27">CredVault — Approval Required</h2>
-      <p><strong>{user_email}</strong> has requested access to <strong>{app_name}</strong>.</p>
-      <p>Please log in to the admin dashboard to approve or reject:</p>
-      <a href="{approve_url}" style="background:#EF9F27;color:#000;padding:10px 20px;text-decoration:none;border-radius:6px;font-weight:bold;display:inline-block;margin-top:10px">
-        Open Admin Dashboard
-      </a>
-    </div>
-    """
-    msg.attach(MIMEText(html, 'html'))
     try:
-        with psycopg2.connect(DATABASE_URL):
-            pass
         api_key = os.getenv("MANDRILL_API_KEY")
+        sender = os.getenv("GMAIL_USER", "akash@5cnetwork.com")
+        approve_url = f"{os.getenv('PORTAL_BASE_URL')}/admin"
+        html = f"""
+        <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;padding:20px">
+          <h2 style="color:#EF9F27">CredVault — Approval Required</h2>
+          <p><strong>{user_email}</strong> has requested access to <strong>{app_name}</strong>.</p>
+          <a href="{approve_url}" style="background:#EF9F27;color:#000;padding:10px 20px;text-decoration:none;border-radius:6px;font-weight:bold;display:inline-block;margin-top:10px">
+            Open Admin Dashboard
+          </a>
+        </div>
+        """
         if api_key:
             import requests as req
             req.post("https://mandrillapp.com/api/1.0/messages/send", json={
                 "key": api_key,
                 "message": {
                     "html": html,
-                    "subject": msg['Subject'],
-                    "from_email": gmail_user,
+                    "subject": f"[CredVault] Approval Required: {user_email} → {app_name}",
+                    "from_email": sender,
                     "from_name": "5C Network IT Support",
                     "to": [{"email": ADMIN_EMAIL, "type": "to"}]
                 }
@@ -139,99 +133,91 @@ def process_request():
     if not is_allowed_email(user_email):
         domain = user_email.split('@')[-1]
         conn = get_db()
-        cur = conn.cursor()
-        cur.execute("INSERT INTO audit_logs (user_email, app_name, action) VALUES (%s, %s, %s)",
-                    (user_email, app_name, "domain_rejected"))
-        cur.close(); conn.close()
+        conn.run("INSERT INTO audit_logs (user_email, app_name, action) VALUES (:e, :a, :ac)",
+                 e=user_email, a=app_name, ac="domain_rejected")
+        conn.close()
         return jsonify({"error": f"Access denied. '{domain}' is not an authorized domain."}), 403
 
     conn = get_db()
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM applications WHERE name = %s", (app_name,))
-    app_row = cur.fetchone()
-    if not app_row:
-        cur.close(); conn.close()
+    rows = conn.run("SELECT id, name, url, username, password FROM applications WHERE name = :n", n=app_name)
+    if not rows:
+        conn.close()
         return jsonify({"error": f"App '{app_name}' not found"}), 404
 
     request_id = generate_id()
-    cur.execute("""INSERT INTO pending_requests (id, user_email, app_name, reason, status, created_at)
-                   VALUES (%s, %s, %s, %s, 'pending', NOW())""",
-                (request_id, user_email, app_name, reason))
-    cur.execute("INSERT INTO audit_logs (user_email, app_name, action) VALUES (%s, %s, %s)",
-                (user_email, app_name, "access_requested"))
-    cur.close(); conn.close()
+    conn.run("INSERT INTO pending_requests (id, user_email, app_name, reason, status) VALUES (:id, :e, :a, :r, 'pending')",
+             id=request_id, e=user_email, a=app_name, r=reason)
+    conn.run("INSERT INTO audit_logs (user_email, app_name, action) VALUES (:e, :a, :ac)",
+             e=user_email, a=app_name, ac="access_requested")
+    conn.close()
 
     threading.Thread(target=send_admin_notification, args=(user_email, app_name, request_id), daemon=True).start()
-
     return jsonify({"success": True, "message": f"Request received. Admin will review and send credentials to {user_email} shortly."})
 
 
 @app.route("/api/admin/approve/<request_id>", methods=["POST"])
 def approve_request(request_id):
     conn = get_db()
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("SELECT * FROM pending_requests WHERE id = %s", (request_id,))
-    req = cur.fetchone()
-
-    if not req:
-        cur.close(); conn.close()
+    rows = conn.run("SELECT id, user_email, app_name, status FROM pending_requests WHERE id = :id", id=request_id)
+    if not rows:
+        conn.close()
         return jsonify({"error": "Request not found"}), 404
 
-    if req['status'] != 'pending':
-        cur.close(); conn.close()
-        return jsonify({"error": f"Request already {req['status']}"}), 400
+    req_id, user_email, app_name, status = rows[0]
+    if status != 'pending':
+        conn.close()
+        return jsonify({"error": f"Request already {status}"}), 400
 
-    cur.execute("SELECT * FROM applications WHERE name = %s", (req['app_name'],))
-    app_row = cur.fetchone()
-    if not app_row:
-        cur.close(); conn.close()
-        return jsonify({"error": f"App '{req['app_name']}' not found"}), 404
+    app_rows = conn.run("SELECT id, name, url, username, password FROM applications WHERE name = :n", n=app_name)
+    if not app_rows:
+        conn.close()
+        return jsonify({"error": f"App '{app_name}' not found"}), 404
+
+    _, _, app_url, app_username, app_password = app_rows[0]
 
     psk = generate_psk()
     creds_payload = json.dumps({
-        "username": app_row['username'],
-        "password": app_row['password'],
-        "app_url":  app_row['url'],
-        "app_name": req['app_name']
+        "username": app_username,
+        "password": app_password,
+        "app_url":  app_url,
+        "app_name": app_name
     })
     encrypted = encrypt_credentials(creds_payload, psk)
     psk_hash  = hashlib.sha256(psk.encode()).hexdigest()
     token_id  = generate_id()
     expires_at = datetime.now(timezone.utc) + timedelta(hours=48)
 
-    cur.execute("""INSERT INTO psk_tokens (id, user_email, app_name, psk_hash, encrypted_creds, expires_at, used, created_at)
-                   VALUES (%s, %s, %s, %s, %s, %s, FALSE, NOW())""",
-                (token_id, req['user_email'], req['app_name'], psk_hash, encrypted, expires_at))
-
-    cur.execute("UPDATE pending_requests SET status='approved', reviewed_at=NOW() WHERE id=%s", (request_id,))
-    cur.execute("INSERT INTO audit_logs (user_email, app_name, action) VALUES (%s, %s, %s)",
-                (req['user_email'], req['app_name'], "credentials_sent"))
-    cur.close(); conn.close()
+    conn.run("""INSERT INTO psk_tokens (id, user_email, app_name, psk_hash, encrypted_creds, expires_at, used)
+                VALUES (:id, :e, :a, :ph, :ec, :exp, false)""",
+             id=token_id, e=user_email, a=app_name, ph=psk_hash, ec=encrypted, exp=expires_at)
+    conn.run("UPDATE pending_requests SET status='approved', reviewed_at=NOW() WHERE id=:id", id=request_id)
+    conn.run("INSERT INTO audit_logs (user_email, app_name, action) VALUES (:e, :a, :ac)",
+             e=user_email, a=app_name, ac="credentials_sent")
+    conn.close()
 
     portal_link = f"{os.getenv('PORTAL_BASE_URL')}/access/{token_id}"
     threading.Thread(target=send_credentials_email,
-                     args=(req['user_email'], req['app_name'], app_row['url'], psk, portal_link),
+                     args=(user_email, app_name, app_url, psk, portal_link),
                      daemon=True).start()
 
-    return jsonify({"success": True, "message": f"Approved. Credentials sent to {req['user_email']}"})
+    return jsonify({"success": True, "message": f"Approved. Credentials sent to {user_email}"})
 
 
 @app.route("/api/admin/reject/<request_id>", methods=["POST"])
 def reject_request(request_id):
     conn = get_db()
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("SELECT * FROM pending_requests WHERE id = %s", (request_id,))
-    req = cur.fetchone()
-    if not req:
-        cur.close(); conn.close()
+    rows = conn.run("SELECT id, user_email, app_name, status FROM pending_requests WHERE id = :id", id=request_id)
+    if not rows:
+        conn.close()
         return jsonify({"error": "Request not found"}), 404
-    if req['status'] != 'pending':
-        cur.close(); conn.close()
-        return jsonify({"error": f"Request already {req['status']}"}), 400
-    cur.execute("UPDATE pending_requests SET status='rejected', reviewed_at=NOW() WHERE id=%s", (request_id,))
-    cur.execute("INSERT INTO audit_logs (user_email, app_name, action) VALUES (%s, %s, %s)",
-                (req['user_email'], req['app_name'], "access_rejected"))
-    cur.close(); conn.close()
+    req_id, user_email, app_name, status = rows[0]
+    if status != 'pending':
+        conn.close()
+        return jsonify({"error": f"Request already {status}"}), 400
+    conn.run("UPDATE pending_requests SET status='rejected', reviewed_at=NOW() WHERE id=:id", id=request_id)
+    conn.run("INSERT INTO audit_logs (user_email, app_name, action) VALUES (:e, :a, :ac)",
+             e=user_email, a=app_name, ac="access_rejected")
+    conn.close()
     return jsonify({"success": True, "message": "Request rejected."})
 
 
@@ -242,66 +228,61 @@ def access_portal(token_id):
 
     psk_input = (request.json or {}).get("psk", "").strip()
     conn = get_db()
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("SELECT * FROM psk_tokens WHERE id = %s", (token_id,))
-    token = cur.fetchone()
-
-    if not token:
-        cur.close(); conn.close()
+    rows = conn.run("SELECT id, user_email, app_name, psk_hash, encrypted_creds, expires_at, used FROM psk_tokens WHERE id = :id", id=token_id)
+    if not rows:
+        conn.close()
         return jsonify({"error": "Invalid or expired link"}), 404
-    if token['used']:
-        cur.close(); conn.close()
+
+    tid, user_email, app_name, psk_hash, encrypted_creds, expires_at, used = rows[0]
+
+    if used:
+        conn.close()
         return jsonify({"error": "This link has already been used. Contact IT for a new one."}), 400
 
-    exp = token['expires_at']
-    if exp:
-        if exp.tzinfo is None:
-            exp = exp.replace(tzinfo=timezone.utc)
-        if datetime.now(timezone.utc) > exp:
-            cur.close(); conn.close()
+    if expires_at:
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        if datetime.now(timezone.utc) > expires_at:
+            conn.close()
             return jsonify({"error": "This link has expired. Please request again."}), 400
 
-    if hashlib.sha256(psk_input.encode()).hexdigest() != token['psk_hash']:
-        cur.close(); conn.close()
+    if hashlib.sha256(psk_input.encode()).hexdigest() != psk_hash:
+        conn.close()
         return jsonify({"error": "Incorrect key. Please check your email."}), 401
 
-    decrypted = decrypt_credentials(token['encrypted_creds'], psk_input)
-    cur.execute("UPDATE psk_tokens SET used=TRUE WHERE id=%s", (token_id,))
-    cur.execute("INSERT INTO audit_logs (user_email, app_name, action) VALUES (%s, %s, %s)",
-                (token['user_email'], token['app_name'], "credentials_accessed"))
-    cur.close(); conn.close()
+    decrypted = decrypt_credentials(encrypted_creds, psk_input)
+    conn.run("UPDATE psk_tokens SET used=true WHERE id=:id", id=token_id)
+    conn.run("INSERT INTO audit_logs (user_email, app_name, action) VALUES (:e, :a, :ac)",
+             e=user_email, a=app_name, ac="credentials_accessed")
+    conn.close()
     return jsonify({"success": True, "credentials": decrypted})
 
 
 @app.route("/admin/logs", methods=["GET"])
 def admin_logs():
     conn = get_db()
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT 200")
-    logs = cur.fetchall()
-    cur.close(); conn.close()
+    rows = conn.run("SELECT user_email, app_name, action, timestamp FROM audit_logs ORDER BY timestamp DESC LIMIT 200")
+    conn.close()
     result = []
-    for l in logs:
-        d = dict(l)
-        if d.get('timestamp'):
-            d['timestamp'] = d['timestamp'].isoformat()
-        result.append(d)
+    for r in rows:
+        result.append({
+            "user_email": r[0], "app_name": r[1], "action": r[2],
+            "timestamp": r[3].isoformat() if r[3] else None
+        })
     return jsonify(result)
 
 
 @app.route("/admin/applications", methods=["GET"])
 def admin_applications():
     conn = get_db()
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("SELECT id, name, url, username, created_at FROM applications ORDER BY name")
-    apps = cur.fetchall()
-    cur.close(); conn.close()
+    rows = conn.run("SELECT id, name, url, username, created_at FROM applications ORDER BY name")
+    conn.close()
     result = []
-    for a in apps:
-        d = dict(a)
-        if d.get('created_at'):
-            d['created_at'] = d['created_at'].isoformat()
-        result.append(d)
+    for r in rows:
+        result.append({
+            "id": r[0], "name": r[1], "url": r[2], "username": r[3],
+            "created_at": r[4].isoformat() if r[4] else None
+        })
     return jsonify(result)
 
 
@@ -312,44 +293,39 @@ def add_application():
         if not data.get(field):
             return jsonify({"error": f"'{field}' is required"}), 400
     conn = get_db()
-    cur = conn.cursor()
-    cur.execute("INSERT INTO applications (name, url, username, password) VALUES (%s, %s, %s, %s)",
-                (data['name'], data['url'], data['username'], data['password']))
-    cur.close(); conn.close()
+    conn.run("INSERT INTO applications (name, url, username, password) VALUES (:n, :u, :un, :p)",
+             n=data['name'], u=data['url'], un=data['username'], p=data['password'])
+    conn.close()
     return jsonify({"success": True})
 
 
 @app.route("/admin/tokens", methods=["GET"])
 def admin_tokens():
     conn = get_db()
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("SELECT * FROM psk_tokens ORDER BY created_at DESC")
-    tokens = cur.fetchall()
-    cur.close(); conn.close()
+    rows = conn.run("SELECT id, user_email, app_name, used, expires_at, created_at FROM psk_tokens ORDER BY created_at DESC")
+    conn.close()
     result = []
-    for t in tokens:
-        d = dict(t)
-        for key in ('expires_at', 'created_at'):
-            if d.get(key):
-                d[key] = d[key].isoformat()
-        result.append(d)
+    for r in rows:
+        result.append({
+            "id": r[0], "user_email": r[1], "app_name": r[2], "used": r[3],
+            "expires_at": r[4].isoformat() if r[4] else None,
+            "created_at": r[5].isoformat() if r[5] else None
+        })
     return jsonify(result)
 
 
 @app.route("/admin/pending", methods=["GET"])
 def admin_pending():
     conn = get_db()
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("SELECT * FROM pending_requests WHERE status='pending' ORDER BY created_at DESC LIMIT 100")
-    reqs = cur.fetchall()
-    cur.close(); conn.close()
+    rows = conn.run("SELECT id, user_email, app_name, reason, status, created_at FROM pending_requests WHERE status='pending' ORDER BY created_at DESC LIMIT 100")
+    conn.close()
     result = []
-    for r in reqs:
-        d = dict(r)
-        for key in ('created_at', 'reviewed_at'):
-            if d.get(key):
-                d[key] = d[key].isoformat()
-        result.append(d)
+    for r in rows:
+        result.append({
+            "id": r[0], "user_email": r[1], "app_name": r[2],
+            "reason": r[3], "status": r[4],
+            "created_at": r[5].isoformat() if r[5] else None
+        })
     return jsonify(result)
 
 
@@ -358,7 +334,6 @@ def admin_dashboard():
     return render_template("admin.html")
 
 
-# Initialize database on startup
 init_db()
 
 if __name__ == "__main__":
