@@ -210,11 +210,11 @@ def approve_request(request_id):
     encrypted = encrypt_credentials(creds_payload, psk)
     psk_hash  = hashlib.sha256(psk.encode()).hexdigest()
     token_id  = generate_id()
-    expires_at = datetime.now(timezone.utc) + timedelta(hours=48)
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
 
     conn.run("""INSERT INTO psk_tokens (id, user_email, app_name, psk_hash, encrypted_creds, expires_at, used)
                 VALUES (:id, :e, :a, :ph, :ec, :exp, false)""",
-             id=token_id, e=user_email, a=app_name, ph=psk_hash, ec=encrypted, exp=expires_at)
+             id=token_id, e=user_email, a=app_name, ph=psk_hash, ec=json.dumps(encrypted), exp=expires_at)
     conn.run("UPDATE pending_requests SET status='approved', reviewed_at=NOW() WHERE id=:id", id=request_id)
     conn.run("INSERT INTO audit_logs (user_email, app_name, action) VALUES (:e, :a, :ac)",
              e=user_email, a=app_name, ac="credentials_sent")
