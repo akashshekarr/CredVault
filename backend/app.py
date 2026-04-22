@@ -48,34 +48,7 @@ def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
 
-def @app.route("/admin/auth/google")
-def google_login():
-    redirect_uri = os.getenv("PORTAL_BASE_URL") + "/admin/auth/callback"
-    return google.authorize_redirect(redirect_uri)
-
-
-@app.route("/admin/auth/callback")
-def google_callback():
-    try:
-        token = google.authorize_access_token()
-        user_info = token.get('userinfo')
-        email = user_info.get('email', '')
-        # Only allow 5cnetwork.com accounts
-        if not email.endswith('@5cnetwork.com'):
-            return redirect(url_for('admin_login_page') + '?error=unauthorized')
-        session['admin_logged_in'] = True
-        session['admin_username'] = email
-        session['admin_role'] = 'admin'
-        session['admin_email'] = email
-        session['admin_name'] = user_info.get('name', email)
-        session.permanent = True
-        return redirect(url_for('admin_dashboard'))
-    except Exception as e:
-        print(f"Google auth error: {e}")
-        return redirect(url_for('admin_login_page') + '?error=auth_failed')
-
-
-init_db():
+def init_db():
     conn = get_db()
     conn.run("""
         CREATE TABLE IF NOT EXISTS applications (
@@ -146,7 +119,6 @@ init_db():
     except:
         pass
 
-    # Create default super admin if no admins exist
     existing = conn.run("SELECT COUNT(*) FROM admins")
     if existing[0][0] == 0:
         default_user = os.getenv("ADMIN_USERNAME", "admin")
@@ -237,10 +209,35 @@ def admin_login():
     return jsonify({"success": True})
 
 
-@app.route("/admin/logout", methods=["GET"])
+@app.route("/admin/logout")
 def admin_logout():
     session.clear()
     return redirect(url_for('admin_login_page'))
+
+
+@app.route("/admin/auth/google")
+def google_login():
+    redirect_uri = os.getenv("PORTAL_BASE_URL") + "/admin/auth/callback"
+    return google.authorize_redirect(redirect_uri)
+
+
+@app.route("/admin/auth/callback")
+def google_callback():
+    try:
+        token = google.authorize_access_token()
+        user_info = token.get('userinfo')
+        email = user_info.get('email', '')
+        if not email.endswith('@5cnetwork.com'):
+            return redirect(url_for('admin_login_page') + '?error=unauthorized')
+        session['admin_logged_in'] = True
+        session['admin_username'] = email
+        session['admin_role'] = 'admin'
+        session['admin_name'] = user_info.get('name', email)
+        session.permanent = True
+        return redirect(url_for('admin_dashboard'))
+    except Exception as e:
+        print(f"Google auth error: {e}")
+        return redirect(url_for('admin_login_page') + '?error=auth_failed')
 
 
 @app.route("/admin/create-admin", methods=["POST"])
@@ -250,22 +247,16 @@ def create_admin():
     new_username = data.get("username", "").strip()
     new_password = data.get("password", "")
     role = data.get("role", "admin")
-
     if not auth_password or not new_username or not new_password:
         return jsonify({"error": "All fields are required"}), 400
     if len(new_password) < 8:
         return jsonify({"error": "Password must be at least 8 characters"}), 400
-    if role not in ['admin', 'viewer', 'super']:
-        return jsonify({"error": "Invalid role"}), 400
-
     conn = get_db()
-    # Verify auth password against any super admin
     auth_rows = conn.run("SELECT id FROM admins WHERE password_hash=:p AND role='super'",
                          p=hash_password(auth_password))
     if not auth_rows:
         conn.close()
         return jsonify({"error": "Invalid verification password. Only super admins can create accounts."}), 403
-
     try:
         conn.run("INSERT INTO admins (username, password_hash, role) VALUES (:u, :p, :r)",
                  u=new_username, p=hash_password(new_password), r=role)
@@ -273,7 +264,7 @@ def create_admin():
         return jsonify({"success": True})
     except Exception as e:
         conn.close()
-        return jsonify({"error": f"Username already exists"}), 400
+        return jsonify({"error": "Username already exists"}), 400
 
 
 @app.route("/admin/reset-password", methods=["POST"])
@@ -282,15 +273,11 @@ def reset_password():
     username = data.get("username", "").strip()
     current_password = data.get("current_password", "")
     new_password = data.get("new_password", "")
-
     if not username or not new_password:
         return jsonify({"error": "Username and new password are required"}), 400
     if len(new_password) < 8:
         return jsonify({"error": "Password must be at least 8 characters"}), 400
-
     conn = get_db()
-
-    # If current password provided, verify it
     if current_password:
         rows = conn.run("SELECT id FROM admins WHERE username=:u AND password_hash=:p",
                         u=username, p=hash_password(current_password))
@@ -298,12 +285,10 @@ def reset_password():
             conn.close()
             return jsonify({"error": "Current password is incorrect"}), 401
     else:
-        # Without current password, only allow reset if username exists
         rows = conn.run("SELECT id FROM admins WHERE username=:u", u=username)
         if not rows:
             conn.close()
             return jsonify({"error": "Username not found"}), 404
-
     conn.run("UPDATE admins SET password_hash=:p WHERE username=:u",
              p=hash_password(new_password), u=username)
     conn.close()
@@ -336,7 +321,6 @@ def process_request():
         conn.close()
         return jsonify({"error": f"App '{app_name}' not found"}), 404
 
-    # Lookup user details
     email_prefix = user_email.split('@')[0].lower().replace('.', ' ')
     user_rows = conn.run("SELECT name, designation, department FROM users WHERE LOWER(name) LIKE :q LIMIT 1",
                          q=f"%{email_prefix.split(' ')[0]}%")
@@ -363,19 +347,15 @@ def approve_request(request_id):
     if not rows:
         conn.close()
         return jsonify({"error": "Request not found"}), 404
-
     req_id, user_email, app_name, status = rows[0]
     if status != 'pending':
         conn.close()
         return jsonify({"error": f"Request already {status}"}), 400
-
     app_rows = conn.run("SELECT id, name, url, username, password FROM applications WHERE name = :n", n=app_name)
     if not app_rows:
         conn.close()
         return jsonify({"error": f"App '{app_name}' not found"}), 404
-
     _, _, app_url, app_username, app_password = app_rows[0]
-
     psk = generate_psk()
     creds_payload = json.dumps({
         "username": app_username,
@@ -387,7 +367,6 @@ def approve_request(request_id):
     psk_hash  = hashlib.sha256(psk.encode()).hexdigest()
     token_id  = generate_id()
     expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
-
     conn.run("""INSERT INTO psk_tokens (id, user_email, app_name, psk_hash, encrypted_creds, expires_at, used)
                 VALUES (:id, :e, :a, :ph, :ec, :exp, false)""",
              id=token_id, e=user_email, a=app_name, ph=psk_hash, ec=json.dumps(encrypted), exp=expires_at)
@@ -395,12 +374,10 @@ def approve_request(request_id):
     conn.run("INSERT INTO audit_logs (user_email, app_name, action) VALUES (:e, :a, :ac)",
              e=user_email, a=app_name, ac="credentials_sent")
     conn.close()
-
     portal_link = f"{os.getenv('PORTAL_BASE_URL')}/access/{token_id}"
     threading.Thread(target=send_credentials_email,
                      args=(user_email, app_name, app_url, psk, portal_link),
                      daemon=True).start()
-
     return jsonify({"success": True, "message": f"Approved. Credentials sent to {user_email}"})
 
 
@@ -427,35 +404,28 @@ def reject_request(request_id):
 def access_portal(token_id):
     if request.method == "GET":
         return render_template("portal.html", token_id=token_id)
-
     psk_input = (request.json or {}).get("psk", "").strip()
     conn = get_db()
     rows = conn.run("SELECT id, user_email, app_name, psk_hash, encrypted_creds, expires_at, used FROM psk_tokens WHERE id = :id", id=token_id)
     if not rows:
         conn.close()
         return jsonify({"error": "Invalid or expired link"}), 404
-
     tid, user_email, app_name, psk_hash, encrypted_creds, expires_at, used = rows[0]
-
     if used:
         conn.close()
         return jsonify({"error": "This link has already been used. Contact IT for a new one."}), 400
-
     if expires_at:
         if expires_at.tzinfo is None:
             expires_at = expires_at.replace(tzinfo=timezone.utc)
         if datetime.now(timezone.utc) > expires_at:
             conn.close()
             return jsonify({"error": "This link has expired. Please request again."}), 400
-
     if hashlib.sha256(psk_input.encode()).hexdigest() != psk_hash:
         conn.close()
         return jsonify({"error": "Incorrect key. Please check your email."}), 401
-
     if isinstance(encrypted_creds, str):
         encrypted_creds = json.loads(encrypted_creds)
     decrypted = decrypt_credentials(encrypted_creds, psk_input)
-
     conn.run("UPDATE psk_tokens SET used=true WHERE id=:id", id=token_id)
     conn.run("INSERT INTO audit_logs (user_email, app_name, action) VALUES (:e, :a, :ac)",
              e=user_email, a=app_name, ac="credentials_accessed")
@@ -469,13 +439,7 @@ def admin_logs():
     conn = get_db()
     rows = conn.run("SELECT user_email, app_name, action, timestamp FROM audit_logs ORDER BY timestamp DESC LIMIT 200")
     conn.close()
-    result = []
-    for r in rows:
-        result.append({
-            "user_email": r[0], "app_name": r[1], "action": r[2],
-            "timestamp": r[3].isoformat() if r[3] else None
-        })
-    return jsonify(result)
+    return jsonify([{"user_email": r[0], "app_name": r[1], "action": r[2], "timestamp": r[3].isoformat() if r[3] else None} for r in rows])
 
 
 @app.route("/admin/applications", methods=["GET"])
@@ -484,13 +448,7 @@ def admin_applications():
     conn = get_db()
     rows = conn.run("SELECT id, name, url, username, created_at FROM applications ORDER BY name")
     conn.close()
-    result = []
-    for r in rows:
-        result.append({
-            "id": r[0], "name": r[1], "url": r[2], "username": r[3],
-            "created_at": r[4].isoformat() if r[4] else None
-        })
-    return jsonify(result)
+    return jsonify([{"id": r[0], "name": r[1], "url": r[2], "username": r[3], "created_at": r[4].isoformat() if r[4] else None} for r in rows])
 
 
 @app.route("/admin/applications", methods=["POST"])
@@ -513,14 +471,7 @@ def admin_tokens():
     conn = get_db()
     rows = conn.run("SELECT id, user_email, app_name, used, expires_at, created_at FROM psk_tokens ORDER BY created_at DESC")
     conn.close()
-    result = []
-    for r in rows:
-        result.append({
-            "id": r[0], "user_email": r[1], "app_name": r[2], "used": r[3],
-            "expires_at": r[4].isoformat() if r[4] else None,
-            "created_at": r[5].isoformat() if r[5] else None
-        })
-    return jsonify(result)
+    return jsonify([{"id": r[0], "user_email": r[1], "app_name": r[2], "used": r[3], "expires_at": r[4].isoformat() if r[4] else None, "created_at": r[5].isoformat() if r[5] else None} for r in rows])
 
 
 @app.route("/admin/pending", methods=["GET"])
@@ -529,15 +480,7 @@ def admin_pending():
     conn = get_db()
     rows = conn.run("SELECT id, user_email, app_name, reason, status, created_at, user_name, user_designation, user_department FROM pending_requests WHERE status='pending' ORDER BY created_at DESC LIMIT 100")
     conn.close()
-    result = []
-    for r in rows:
-        result.append({
-            "id": r[0], "user_email": r[1], "app_name": r[2],
-            "reason": r[3], "status": r[4],
-            "created_at": r[5].isoformat() if r[5] else None,
-            "user_name": r[6], "user_designation": r[7], "user_department": r[8]
-        })
-    return jsonify(result)
+    return jsonify([{"id": r[0], "user_email": r[1], "app_name": r[2], "reason": r[3], "status": r[4], "created_at": r[5].isoformat() if r[5] else None, "user_name": r[6], "user_designation": r[7], "user_department": r[8]} for r in rows])
 
 
 @app.route("/admin/users", methods=["GET"])
@@ -559,7 +502,7 @@ def add_user():
     emp_id = data.get("emp_id") or str(uuid.uuid4())[:8]
     conn = get_db()
     conn.run("INSERT INTO users (emp_id, name, designation, department) VALUES (:id, :n, :d, :dept) ON CONFLICT (emp_id) DO UPDATE SET name=:n, designation=:d, department=:dept",
-             id=emp_id, n=data['name'], d=data.get('designation',''), dept=data.get('department',''))
+             id=emp_id, n=data['name'], d=data.get('designation', ''), dept=data.get('department', ''))
     conn.close()
     return jsonify({"success": True})
 
