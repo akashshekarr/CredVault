@@ -77,7 +77,7 @@
         err.textContent = data.error;
         err.style.display = "block";
       } else {
-        const c = JSON.parse(data.credentials);
+        const c = typeof data.credentials === 'string' ? JSON.parse(data.credentials) : data.credentials;
         document.getElementById("r-app").textContent = c.app_name;
         document.getElementById("r-user").textContent = c.username;
         document.getElementById("r-pass").textContent = c.password;
