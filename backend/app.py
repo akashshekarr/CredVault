@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, session, redirect, url_for
 import os
 import json
 import hashlib
@@ -9,10 +9,22 @@ from email_sender import send_credentials_email
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse
 from dotenv import load_dotenv
+from functools import wraps
+from authlib.integrations.flask_client import OAuth
 
 load_dotenv()
 
 app = Flask(__name__, template_folder="templates")
+app.secret_key = os.getenv("SECRET_KEY", "credsvault_5cnetwork_2024_xK9mP")
+
+oauth = OAuth(app)
+google = oauth.register(
+    name='google',
+    client_id=os.getenv("GOOGLE_CLIENT_ID"),
+    client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
+    server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
+    client_kwargs={'scope': 'openid email profile'},
+)
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 ALLOWED_DOMAINS = ['5cnetwork.com', '5cnetwork.in']
@@ -32,7 +44,38 @@ def get_db():
     return conn
 
 
-def init_db():
+def hash_password(password):
+    return hashlib.sha256(password.encode()).hexdigest()
+
+
+def @app.route("/admin/auth/google")
+def google_login():
+    redirect_uri = os.getenv("PORTAL_BASE_URL") + "/admin/auth/callback"
+    return google.authorize_redirect(redirect_uri)
+
+
+@app.route("/admin/auth/callback")
+def google_callback():
+    try:
+        token = google.authorize_access_token()
+        user_info = token.get('userinfo')
+        email = user_info.get('email', '')
+        # Only allow 5cnetwork.com accounts
+        if not email.endswith('@5cnetwork.com'):
+            return redirect(url_for('admin_login_page') + '?error=unauthorized')
+        session['admin_logged_in'] = True
+        session['admin_username'] = email
+        session['admin_role'] = 'admin'
+        session['admin_email'] = email
+        session['admin_name'] = user_info.get('name', email)
+        session.permanent = True
+        return redirect(url_for('admin_dashboard'))
+    except Exception as e:
+        print(f"Google auth error: {e}")
+        return redirect(url_for('admin_login_page') + '?error=auth_failed')
+
+
+init_db():
     conn = get_db()
     conn.run("""
         CREATE TABLE IF NOT EXISTS applications (
@@ -87,13 +130,31 @@ def init_db():
             department TEXT
         )
     """)
-    # Add columns if they don't exist (for existing tables)
+    conn.run("""
+        CREATE TABLE IF NOT EXISTS admins (
+            id SERIAL PRIMARY KEY,
+            username TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            role TEXT DEFAULT 'admin',
+            created_at TIMESTAMPTZ DEFAULT NOW()
+        )
+    """)
     try:
         conn.run("ALTER TABLE pending_requests ADD COLUMN IF NOT EXISTS user_name TEXT")
         conn.run("ALTER TABLE pending_requests ADD COLUMN IF NOT EXISTS user_designation TEXT")
         conn.run("ALTER TABLE pending_requests ADD COLUMN IF NOT EXISTS user_department TEXT")
     except:
         pass
+
+    # Create default super admin if no admins exist
+    existing = conn.run("SELECT COUNT(*) FROM admins")
+    if existing[0][0] == 0:
+        default_user = os.getenv("ADMIN_USERNAME", "admin")
+        default_pass = os.getenv("ADMIN_PASSWORD", "CredVault@5C2024")
+        conn.run("INSERT INTO admins (username, password_hash, role) VALUES (:u, :p, 'super')",
+                 u=default_user, p=hash_password(default_pass))
+        print(f"Default admin created: {default_user}")
+
     conn.close()
     print("Database initialized!")
 
@@ -106,6 +167,15 @@ def is_allowed_email(email):
 def generate_id():
     import uuid
     return str(uuid.uuid4()).replace('-', '')[:20]
+
+
+def login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not session.get('admin_logged_in'):
+            return redirect(url_for('admin_login_page'))
+        return f(*args, **kwargs)
+    return decorated
 
 
 def send_admin_notification(user_email, app_name, request_id):
@@ -138,6 +208,110 @@ def send_admin_notification(user_email, app_name, request_id):
         print(f"Admin notification failed: {e}")
 
 
+# ── AUTH ROUTES ──
+
+@app.route("/admin/login", methods=["GET"])
+def admin_login_page():
+    if session.get('admin_logged_in'):
+        return redirect(url_for('admin_dashboard'))
+    return render_template("login.html")
+
+
+@app.route("/admin/login", methods=["POST"])
+def admin_login():
+    data = request.json
+    username = data.get("username", "").strip()
+    password = data.get("password", "")
+    if not username or not password:
+        return jsonify({"error": "Username and password required"}), 400
+    conn = get_db()
+    rows = conn.run("SELECT id, username, role FROM admins WHERE username=:u AND password_hash=:p",
+                    u=username, p=hash_password(password))
+    conn.close()
+    if not rows:
+        return jsonify({"error": "Invalid username or password"}), 401
+    session['admin_logged_in'] = True
+    session['admin_username'] = rows[0][1]
+    session['admin_role'] = rows[0][2]
+    session.permanent = True
+    return jsonify({"success": True})
+
+
+@app.route("/admin/logout", methods=["GET"])
+def admin_logout():
+    session.clear()
+    return redirect(url_for('admin_login_page'))
+
+
+@app.route("/admin/create-admin", methods=["POST"])
+def create_admin():
+    data = request.json
+    auth_password = data.get("auth_password", "")
+    new_username = data.get("username", "").strip()
+    new_password = data.get("password", "")
+    role = data.get("role", "admin")
+
+    if not auth_password or not new_username or not new_password:
+        return jsonify({"error": "All fields are required"}), 400
+    if len(new_password) < 8:
+        return jsonify({"error": "Password must be at least 8 characters"}), 400
+    if role not in ['admin', 'viewer', 'super']:
+        return jsonify({"error": "Invalid role"}), 400
+
+    conn = get_db()
+    # Verify auth password against any super admin
+    auth_rows = conn.run("SELECT id FROM admins WHERE password_hash=:p AND role='super'",
+                         p=hash_password(auth_password))
+    if not auth_rows:
+        conn.close()
+        return jsonify({"error": "Invalid verification password. Only super admins can create accounts."}), 403
+
+    try:
+        conn.run("INSERT INTO admins (username, password_hash, role) VALUES (:u, :p, :r)",
+                 u=new_username, p=hash_password(new_password), r=role)
+        conn.close()
+        return jsonify({"success": True})
+    except Exception as e:
+        conn.close()
+        return jsonify({"error": f"Username already exists"}), 400
+
+
+@app.route("/admin/reset-password", methods=["POST"])
+def reset_password():
+    data = request.json
+    username = data.get("username", "").strip()
+    current_password = data.get("current_password", "")
+    new_password = data.get("new_password", "")
+
+    if not username or not new_password:
+        return jsonify({"error": "Username and new password are required"}), 400
+    if len(new_password) < 8:
+        return jsonify({"error": "Password must be at least 8 characters"}), 400
+
+    conn = get_db()
+
+    # If current password provided, verify it
+    if current_password:
+        rows = conn.run("SELECT id FROM admins WHERE username=:u AND password_hash=:p",
+                        u=username, p=hash_password(current_password))
+        if not rows:
+            conn.close()
+            return jsonify({"error": "Current password is incorrect"}), 401
+    else:
+        # Without current password, only allow reset if username exists
+        rows = conn.run("SELECT id FROM admins WHERE username=:u", u=username)
+        if not rows:
+            conn.close()
+            return jsonify({"error": "Username not found"}), 404
+
+    conn.run("UPDATE admins SET password_hash=:p WHERE username=:u",
+             p=hash_password(new_password), u=username)
+    conn.close()
+    return jsonify({"success": True})
+
+
+# ── API ROUTES ──
+
 @app.route("/api/process-request", methods=["POST"])
 def process_request():
     data = request.json
@@ -164,7 +338,8 @@ def process_request():
 
     # Lookup user details
     email_prefix = user_email.split('@')[0].lower().replace('.', ' ')
-    user_rows = conn.run("SELECT name, designation, department FROM users WHERE LOWER(name) LIKE :q LIMIT 1", q=f"%{email_prefix.split(' ')[0]}%")
+    user_rows = conn.run("SELECT name, designation, department FROM users WHERE LOWER(name) LIKE :q LIMIT 1",
+                         q=f"%{email_prefix.split(' ')[0]}%")
     user_name = user_rows[0][0] if user_rows else None
     user_designation = user_rows[0][1] if user_rows else None
     user_department = user_rows[0][2] if user_rows else None
@@ -181,6 +356,7 @@ def process_request():
 
 
 @app.route("/api/admin/approve/<request_id>", methods=["POST"])
+@login_required
 def approve_request(request_id):
     conn = get_db()
     rows = conn.run("SELECT id, user_email, app_name, status FROM pending_requests WHERE id = :id", id=request_id)
@@ -229,6 +405,7 @@ def approve_request(request_id):
 
 
 @app.route("/api/admin/reject/<request_id>", methods=["POST"])
+@login_required
 def reject_request(request_id):
     conn = get_db()
     rows = conn.run("SELECT id, user_email, app_name, status FROM pending_requests WHERE id = :id", id=request_id)
@@ -276,8 +453,9 @@ def access_portal(token_id):
         return jsonify({"error": "Incorrect key. Please check your email."}), 401
 
     if isinstance(encrypted_creds, str):
-     encrypted_creds = json.loads(encrypted_creds)
+        encrypted_creds = json.loads(encrypted_creds)
     decrypted = decrypt_credentials(encrypted_creds, psk_input)
+
     conn.run("UPDATE psk_tokens SET used=true WHERE id=:id", id=token_id)
     conn.run("INSERT INTO audit_logs (user_email, app_name, action) VALUES (:e, :a, :ac)",
              e=user_email, a=app_name, ac="credentials_accessed")
@@ -286,6 +464,7 @@ def access_portal(token_id):
 
 
 @app.route("/admin/logs", methods=["GET"])
+@login_required
 def admin_logs():
     conn = get_db()
     rows = conn.run("SELECT user_email, app_name, action, timestamp FROM audit_logs ORDER BY timestamp DESC LIMIT 200")
@@ -300,6 +479,7 @@ def admin_logs():
 
 
 @app.route("/admin/applications", methods=["GET"])
+@login_required
 def admin_applications():
     conn = get_db()
     rows = conn.run("SELECT id, name, url, username, created_at FROM applications ORDER BY name")
@@ -314,6 +494,7 @@ def admin_applications():
 
 
 @app.route("/admin/applications", methods=["POST"])
+@login_required
 def add_application():
     data = request.json
     for field in ["name", "url", "username", "password"]:
@@ -327,6 +508,7 @@ def add_application():
 
 
 @app.route("/admin/tokens", methods=["GET"])
+@login_required
 def admin_tokens():
     conn = get_db()
     rows = conn.run("SELECT id, user_email, app_name, used, expires_at, created_at FROM psk_tokens ORDER BY created_at DESC")
@@ -342,6 +524,7 @@ def admin_tokens():
 
 
 @app.route("/admin/pending", methods=["GET"])
+@login_required
 def admin_pending():
     conn = get_db()
     rows = conn.run("SELECT id, user_email, app_name, reason, status, created_at, user_name, user_designation, user_department FROM pending_requests WHERE status='pending' ORDER BY created_at DESC LIMIT 100")
@@ -357,9 +540,8 @@ def admin_pending():
     return jsonify(result)
 
 
-
-
 @app.route("/admin/users", methods=["GET"])
+@login_required
 def admin_users():
     conn = get_db()
     rows = conn.run("SELECT emp_id, name, designation, department FROM users ORDER BY name")
@@ -368,6 +550,7 @@ def admin_users():
 
 
 @app.route("/admin/users", methods=["POST"])
+@login_required
 def add_user():
     data = request.json
     if not data.get("name"):
@@ -380,7 +563,9 @@ def add_user():
     conn.close()
     return jsonify({"success": True})
 
+
 @app.route("/admin", methods=["GET"])
+@login_required
 def admin_dashboard():
     return render_template("admin.html")
 

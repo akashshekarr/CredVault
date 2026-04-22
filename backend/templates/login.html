@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CredVault — Login</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;1,9..144,300;1,9..144,400&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{--bg:#07090f;--surface:#10141f;--surface2:#161b29;--border:#232b40;--border-soft:#1a2030;--text:#e7ecf5;--text-dim:#aab3c8;--muted:#6a7390;--cyan:#58E6D9;--violet:#9B7BFF;--red:#FF5C7A;--red-dim:rgba(255,92,122,0.12);--green:#4FE39B}
+    body{font-family:'Space Grotesk',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden}
+    .aurora{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+    .aurora::before{content:'';position:absolute;width:600px;height:600px;background:radial-gradient(circle,var(--cyan),transparent 70%);top:-200px;left:-150px;filter:blur(80px);opacity:0.4;animation:drift1 20s ease-in-out infinite alternate}
+    .aurora::after{content:'';position:absolute;width:700px;height:700px;background:radial-gradient(circle,var(--violet),transparent 70%);bottom:-250px;right:-200px;filter:blur(80px);opacity:0.4;animation:drift2 24s ease-in-out infinite alternate}
+    @keyframes drift1{0%{transform:translate(0,0)}100%{transform:translate(80px,60px)}}
+    @keyframes drift2{0%{transform:translate(0,0)}100%{transform:translate(-60px,-40px)}}
+    .grid-bg{position:fixed;inset:0;z-index:0;pointer-events:none;background-image:linear-gradient(rgba(88,230,217,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(88,230,217,0.03) 1px,transparent 1px);background-size:48px 48px}
+    .card{position:relative;z-index:1;background:linear-gradient(180deg,rgba(16,20,31,0.97),rgba(11,14,23,0.97));border:1px solid var(--border-soft);border-radius:20px;padding:44px 40px;width:100%;max-width:440px;box-shadow:0 40px 80px -20px rgba(0,0,0,0.8),0 0 60px -20px rgba(155,123,255,0.3)}
+    .card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;border-radius:20px 20px 0 0;background:linear-gradient(90deg,var(--cyan),var(--violet))}
+    .logo{display:flex;flex-direction:column;align-items:center;gap:8px;margin-bottom:32px}
+    .logo-icon{width:48px;height:48px;background:linear-gradient(135deg,var(--cyan),var(--violet));border-radius:14px;display:flex;align-items:center;justify-content:center;box-shadow:0 8px 24px -6px rgba(88,230,217,0.5)}
+    .logo-icon svg{width:22px;height:22px;fill:#07090f}
+    .logo-text{font-family:'Fraunces',serif;font-size:26px;font-weight:400;background:linear-gradient(180deg,#fff,#b8c2d8);-webkit-background-clip:text;background-clip:text;color:transparent}
+    .logo-sub{font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:0.15em;text-transform:uppercase}
+    .tab-header{display:flex;background:rgba(255,255,255,0.04);border-radius:10px;padding:4px;margin-bottom:28px;gap:4px}
+    .tab{flex:1;padding:9px;text-align:center;font-size:12px;font-weight:600;border-radius:7px;cursor:pointer;transition:all 0.2s;color:var(--muted);border:none;background:none}
+    .tab.active{background:linear-gradient(135deg,var(--cyan),var(--violet));color:#07090f}
+    .panel{display:none}
+    .panel.active{display:block}
+    .field{margin-bottom:18px}
+    .field label{display:block;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:0.12em;text-transform:uppercase;margin-bottom:7px}
+    .field input,.field select{width:100%;background:rgba(11,14,23,0.8);border:1px solid var(--border);border-radius:10px;padding:12px 14px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:13px;outline:none;transition:all 0.18s}
+    .field input:focus,.field select:focus{border-color:var(--cyan);box-shadow:0 0 0 3px rgba(88,230,217,0.1)}
+    .field input::placeholder{color:var(--muted)}
+    .field select option{background:var(--surface)}
+    .btn{width:100%;padding:14px;background:linear-gradient(135deg,var(--cyan),var(--violet));color:#07090f;border:none;border-radius:10px;font-family:'Space Grotesk',sans-serif;font-size:14px;font-weight:700;cursor:pointer;transition:all 0.2s;letter-spacing:0.02em;margin-top:4px}
+    .btn:hover{filter:brightness(1.1);transform:translateY(-1px);box-shadow:0 10px 28px -10px rgba(155,123,255,0.6)}
+    .btn:active{transform:translateY(0)}
+    .btn-secondary{background:linear-gradient(180deg,var(--surface2),var(--surface));color:var(--text);border:1px solid var(--border)}
+    .btn-secondary:hover{border-color:var(--cyan);color:var(--cyan);filter:none}
+    .error{background:var(--red-dim);border:1px solid rgba(255,92,122,0.3);border-radius:8px;padding:10px 14px;font-size:12px;font-family:'JetBrains Mono',monospace;color:#FFB1C0;margin-top:14px;display:none;text-align:center}
+    .success{background:rgba(79,227,155,0.1);border:1px solid rgba(79,227,155,0.3);border-radius:8px;padding:10px 14px;font-size:12px;font-family:'JetBrains Mono',monospace;color:var(--green);margin-top:14px;display:none;text-align:center}
+    .divider{display:flex;align-items:center;gap:10px;margin:20px 0;color:var(--muted);font-size:11px;font-family:'JetBrains Mono',monospace}
+    .divider::before,.divider::after{content:'';flex:1;height:1px;background:var(--border)}
+    .hint{font-size:11px;color:var(--muted);margin-top:8px;font-family:'JetBrains Mono',monospace;text-align:center}
+    .hint a{color:var(--cyan);cursor:pointer;text-decoration:none}
+    .hint a:hover{text-decoration:underline}
+    .btn-google{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:13px;background:#fff;color:#1a1a2e;border:none;border-radius:10px;font-family:'Space Grotesk',sans-serif;font-size:14px;font-weight:600;cursor:pointer;transition:all 0.2s;text-decoration:none;margin-bottom:4px}
+    .btn-google:hover{background:#f5f5f5;transform:translateY(-1px);box-shadow:0 8px 20px -8px rgba(0,0,0,0.4)}
+    .role-badge{display:inline-block;font-size:10px;font-family:'JetBrains Mono',monospace;padding:3px 10px;border-radius:999px;margin-left:6px}
+    .role-super{background:rgba(255,181,71,0.15);color:#FFB547;border:1px solid rgba(255,181,71,0.3)}
+    .role-admin{background:rgba(88,230,217,0.12);color:var(--cyan);border:1px solid rgba(88,230,217,0.3)}
+    .role-viewer{background:rgba(155,123,255,0.12);color:var(--violet);border:1px solid rgba(155,123,255,0.3)}
+  </style>
+</head>
+<body>
+  <div class="aurora"></div>
+  <div class="grid-bg"></div>
+
+  <div class="card">
+    <div class="logo">
+      <div class="logo-icon">
+        <svg viewBox="0 0 24 24"><path d="M12 1l9 4v6c0 5.55-3.84 10.74-9 12-5.16-1.26-9-6.45-9-12V5l9-4zm0 6a3 3 0 00-3 3 3 3 0 002 2.83V17h2v-4.17A3 3 0 0014 10a3 3 0 00-2-3z"/></svg>
+      </div>
+      <div class="logo-text">CredVault</div>
+      <div class="logo-sub">5C Network · Admin Portal</div>
+    </div>
+
+    <div class="tab-header">
+      <button class="tab active" onclick="switchTab('login')">Sign In</button>
+      <button class="tab" onclick="switchTab('invite')">Add Admin</button>
+      <button class="tab" onclick="switchTab('forgot')">Reset Password</button>
+    </div>
+
+    <!-- SIGN IN -->
+    <div class="panel active" id="panel-login">
+      <a href="/admin/auth/google" class="btn-google">
+        <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+        Sign in with Google
+      </a>
+      <div class="divider">or use password</div>
+      <div class="field">
+        <label>Username</label>
+        <input type="text" id="loginUser" placeholder="admin username" autocomplete="username"/>
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input type="password" id="loginPass" placeholder="••••••••" autocomplete="current-password"/>
+      </div>
+      <button class="btn" onclick="doLogin()">Sign In →</button>
+      <div class="error" id="loginErr"></div>
+    </div>
+
+    <!-- ADD ADMIN -->
+    <div class="panel" id="panel-invite">
+      <div class="field">
+        <label>Your Password (verify)</label>
+        <input type="password" id="inviteAuth" placeholder="your current password"/>
+      </div>
+      <div class="field">
+        <label>New Admin Username</label>
+        <input type="text" id="inviteUser" placeholder="e.g. nisha.chandra"/>
+      </div>
+      <div class="field">
+        <label>New Admin Password</label>
+        <input type="password" id="invitePass" placeholder="min 8 characters"/>
+      </div>
+      <div class="field">
+        <label>Role</label>
+        <select id="inviteRole">
+          <option value="admin">Admin — can approve/reject requests</option>
+          <option value="viewer">Viewer — read-only access</option>
+          <option value="super">Super Admin — full access</option>
+        </select>
+      </div>
+      <button class="btn" onclick="doInvite()">Create Admin Account</button>
+      <div class="error" id="inviteErr"></div>
+      <div class="success" id="inviteOk"></div>
+    </div>
+
+    <!-- FORGOT PASSWORD -->
+    <div class="panel" id="panel-forgot">
+      <div class="field">
+        <label>Your Username</label>
+        <input type="text" id="forgotUser" placeholder="admin username"/>
+      </div>
+      <div class="field">
+        <label>Current Password (if known)</label>
+        <input type="password" id="forgotCurrent" placeholder="leave blank if forgotten"/>
+      </div>
+      <div class="field">
+        <label>New Password</label>
+        <input type="password" id="forgotNew" placeholder="min 8 characters"/>
+      </div>
+      <div class="field">
+        <label>Confirm New Password</label>
+        <input type="password" id="forgotConfirm" placeholder="repeat new password"/>
+      </div>
+      <button class="btn" onclick="doReset()">Reset Password</button>
+      <div class="error" id="forgotErr"></div>
+      <div class="success" id="forgotOk"></div>
+      <div class="divider">or</div>
+      <p style="font-size:12px;color:var(--muted);text-align:center;font-family:'JetBrains Mono',monospace">Contact IT at <span style="color:var(--cyan)">akash@5cnetwork.com</span> for emergency access reset</p>
+    </div>
+  </div>
+
+<script>
+  function switchTab(tab) {
+    document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', ['login','invite','forgot'][i]===tab));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    document.getElementById('panel-'+tab).classList.add('active');
+  }
+
+  async function doLogin() {
+    const username = document.getElementById('loginUser').value.trim();
+    const password = document.getElementById('loginPass').value;
+    const err = document.getElementById('loginErr');
+    err.style.display = 'none';
+    if (!username || !password) { err.textContent = 'Please enter username and password.'; err.style.display = 'block'; return; }
+    try {
+      const r = await fetch('/admin/login', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({username, password})
+      });
+      const d = await r.json();
+      if (d.success) {
+        window.location.href = '/admin';
+      } else {
+        err.textContent = d.error || 'Invalid credentials.';
+        err.style.display = 'block';
+      }
+    } catch(e) {
+      err.textContent = 'Server error. Please try again.';
+      err.style.display = 'block';
+    }
+  }
+
+  async function doInvite() {
+    const auth = document.getElementById('inviteAuth').value;
+    const username = document.getElementById('inviteUser').value.trim();
+    const password = document.getElementById('invitePass').value;
+    const role = document.getElementById('inviteRole').value;
+    const err = document.getElementById('inviteErr');
+    const ok = document.getElementById('inviteOk');
+    err.style.display = 'none'; ok.style.display = 'none';
+    if (!auth || !username || !password) { err.textContent = 'All fields are required.'; err.style.display = 'block'; return; }
+    if (password.length < 8) { err.textContent = 'Password must be at least 8 characters.'; err.style.display = 'block'; return; }
+    try {
+      const r = await fetch('/admin/create-admin', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({auth_password: auth, username, password, role})
+      });
+      const d = await r.json();
+      if (d.success) {
+        ok.textContent = `Admin account "${username}" created successfully!`;
+        ok.style.display = 'block';
+        document.getElementById('inviteUser').value = '';
+        document.getElementById('invitePass').value = '';
+        document.getElementById('inviteAuth').value = '';
+      } else {
+        err.textContent = d.error || 'Failed to create admin.';
+        err.style.display = 'block';
+      }
+    } catch(e) {
+      err.textContent = 'Server error. Please try again.';
+      err.style.display = 'block';
+    }
+  }
+
+  async function doReset() {
+    const username = document.getElementById('forgotUser').value.trim();
+    const current = document.getElementById('forgotCurrent').value;
+    const newPass = document.getElementById('forgotNew').value;
+    const confirm = document.getElementById('forgotConfirm').value;
+    const err = document.getElementById('forgotErr');
+    const ok = document.getElementById('forgotOk');
+    err.style.display = 'none'; ok.style.display = 'none';
+    if (!username || !newPass || !confirm) { err.textContent = 'Username and new password are required.'; err.style.display = 'block'; return; }
+    if (newPass.length < 8) { err.textContent = 'Password must be at least 8 characters.'; err.style.display = 'block'; return; }
+    if (newPass !== confirm) { err.textContent = 'Passwords do not match.'; err.style.display = 'block'; return; }
+    try {
+      const r = await fetch('/admin/reset-password', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({username, current_password: current, new_password: newPass})
+      });
+      const d = await r.json();
+      if (d.success) {
+        ok.textContent = 'Password reset successfully! You can now sign in.';
+        ok.style.display = 'block';
+        setTimeout(() => switchTab('login'), 2000);
+      } else {
+        err.textContent = d.error || 'Failed to reset password.';
+        err.style.display = 'block';
+      }
+    } catch(e) {
+      err.textContent = 'Server error. Please try again.';
+      err.style.display = 'block';
+    }
+  }
+
+  // Show error from URL params
+  const urlParams = new URLSearchParams(window.location.search);
+  const urlError = urlParams.get('error');
+  if (urlError === 'unauthorized') {
+    const err = document.getElementById('loginErr');
+    err.textContent = 'Access denied. Only @5cnetwork.com accounts are allowed.';
+    err.style.display = 'block';
+  } else if (urlError === 'auth_failed') {
+    const err = document.getElementById('loginErr');
+    err.textContent = 'Google authentication failed. Please try again.';
+    err.style.display = 'block';
+  }
+
+  // Enter key support
+  document.getElementById('loginPass').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
+  document.getElementById('loginUser').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
+</script>
+</body>
+</html>
