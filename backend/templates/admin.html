@@ -187,6 +187,7 @@
         <span id="connText">connecting...</span>
       </div>
       <button class="btn" onclick="loadAll()">↺ Refresh</button>
+      <a href="/admin/logout" class="btn" style="text-decoration:none;color:var(--red);border-color:var(--red)">⎋ Logout</a>
     </div>
   </header>
 
@@ -506,6 +507,20 @@
       renderApps(apps);renderLogs(logs);renderTokens(tokens);renderPending(pending);
     }catch(e){setConn(false);showErr('Cannot reach Flask — make sure the server is running.');}
   }
+// Auto logout after 30 mins inactivity
+let inactivityTimer;
+function resetTimer(){
+  clearTimeout(inactivityTimer);
+  inactivityTimer = setTimeout(() => {
+    alert('Session expired due to inactivity. You will be logged out.');
+    window.location.href = '/admin/logout';
+  }, 30 * 60 * 1000);
+}
+['mousemove','keydown','click','scroll','touchstart'].forEach(e => 
+  document.addEventListener(e, resetTimer, true)
+);
+resetTimer();
+
 
   loadAll();
 </script>

@@ -17,6 +17,9 @@ load_dotenv()
 app = Flask(__name__, template_folder="templates")
 app.secret_key = os.getenv("SECRET_KEY", "credsvault_5cnetwork_2024_xK9mP")
 
+from datetime import timedelta
+app.permanent_session_lifetime = timedelta(minutes=30)
+
 oauth = OAuth(app)
 google = oauth.register(
     name='google',
