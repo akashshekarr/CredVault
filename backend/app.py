@@ -241,11 +241,18 @@ def google_callback():
         token = google.authorize_access_token()
         user_info = token.get('userinfo')
         email = user_info.get('email', '')
-        if not email.endswith('@5cnetwork.com'):
+
+        # Check if this email exists in admins table
+        conn = get_db()
+        rows = conn.run("SELECT username, role FROM admins WHERE LOWER(username)=LOWER(:e)", e=email)
+        conn.close()
+
+        if not rows:
             return redirect(url_for('admin_login_page') + '?error=unauthorized')
+
         session['admin_logged_in'] = True
-        session['admin_username'] = email
-        session['admin_role'] = 'admin'
+        session['admin_username'] = rows[0][0]
+        session['admin_role'] = rows[0][1]
         session['admin_name'] = user_info.get('name', email)
         session.permanent = True
         return redirect(url_for('admin_dashboard'))

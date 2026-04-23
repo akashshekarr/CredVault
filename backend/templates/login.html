@@ -264,7 +264,7 @@
   const urlError = urlParams.get('error');
   if (urlError === 'unauthorized') {
     const err = document.getElementById('loginErr');
-    err.textContent = 'Access denied. Only @5cnetwork.com accounts are allowed.';
+    err.textContent = 'Access denied. Your account has not been granted admin access. Contact IT.';
     err.style.display = 'block';
   } else if (urlError === 'auth_failed') {
     const err = document.getElementById('loginErr');
