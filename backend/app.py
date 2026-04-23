@@ -17,9 +17,6 @@ load_dotenv()
 app = Flask(__name__, template_folder="templates")
 app.secret_key = os.getenv("SECRET_KEY", "credsvault_5cnetwork_2024_xK9mP")
 
-from datetime import timedelta
-app.permanent_session_lifetime = timedelta(minutes=30)
-
 oauth = OAuth(app)
 google = oauth.register(
     name='google',
@@ -104,6 +101,20 @@ def init_db():
             name TEXT NOT NULL,
             designation TEXT,
             department TEXT
+        )
+    """)
+    conn.run("""
+        CREATE TABLE IF NOT EXISTS access_grants (
+            id SERIAL PRIMARY KEY,
+            user_name TEXT NOT NULL,
+            user_email TEXT,
+            user_designation TEXT,
+            user_department TEXT,
+            app_name TEXT NOT NULL,
+            access_type TEXT NOT NULL,
+            granted_by TEXT,
+            granted_at TIMESTAMPTZ DEFAULT NOW(),
+            notes TEXT
         )
     """)
     conn.run("""
@@ -508,6 +519,89 @@ def add_user():
              id=emp_id, n=data['name'], d=data.get('designation', ''), dept=data.get('department', ''))
     conn.close()
     return jsonify({"success": True})
+
+
+@app.route("/admin/access-grants", methods=["GET"])
+@login_required
+def get_access_grants():
+    conn = get_db()
+    rows = conn.run("SELECT id, user_name, user_email, user_designation, user_department, app_name, access_type, granted_by, granted_at, notes FROM access_grants ORDER BY granted_at DESC")
+    conn.close()
+    return jsonify([{
+        "id": r[0], "user_name": r[1], "user_email": r[2],
+        "user_designation": r[3], "user_department": r[4],
+        "app_name": r[5], "access_type": r[6], "granted_by": r[7],
+        "granted_at": r[8].isoformat() if r[8] else None, "notes": r[9]
+    } for r in rows])
+
+
+@app.route("/admin/access-grants", methods=["POST"])
+@login_required
+def add_access_grant():
+    data = request.json
+    if not data.get("user_name") or not data.get("app_name") or not data.get("access_type"):
+        return jsonify({"error": "user_name, app_name and access_type are required"}), 400
+    conn = get_db()
+    conn.run("""INSERT INTO access_grants (user_name, user_email, user_designation, user_department, app_name, access_type, granted_by, notes)
+                VALUES (:un, :ue, :ud, :udept, :a, :at, :gb, :n)""",
+             un=data['user_name'], ue=data.get('user_email',''),
+             ud=data.get('user_designation',''), udept=data.get('user_department',''),
+             a=data['app_name'], at=data['access_type'],
+             gb=session.get('admin_username','admin'), n=data.get('notes',''))
+    conn.close()
+    return jsonify({"success": True})
+
+
+@app.route("/admin/access-grants/<int:grant_id>", methods=["DELETE"])
+@login_required
+def delete_access_grant(grant_id):
+    conn = get_db()
+    conn.run("DELETE FROM access_grants WHERE id=:id", id=grant_id)
+    conn.close()
+    return jsonify({"success": True})
+
+
+@app.route("/admin/reports/user/<user_name>", methods=["GET"])
+@login_required
+def user_report(user_name):
+    conn = get_db()
+    rows = conn.run("""SELECT ag.app_name, ag.access_type, ag.granted_at, ag.granted_by, ag.notes,
+                       ag.user_designation, ag.user_department, ag.user_email
+                       FROM access_grants ag
+                       WHERE LOWER(ag.user_name) LIKE LOWER(:q)
+                       ORDER BY ag.granted_at DESC""",
+                    q=f"%{user_name}%")
+    conn.close()
+    return jsonify([{
+        "app_name": r[0], "access_type": r[1],
+        "granted_at": r[2].isoformat() if r[2] else None,
+        "granted_by": r[3], "notes": r[4],
+        "user_designation": r[5], "user_department": r[6], "user_email": r[7]
+    } for r in rows])
+
+
+@app.route("/admin/reports/app/<app_name>", methods=["GET"])
+@login_required
+def app_report(app_name):
+    conn = get_db()
+    rows = conn.run("""SELECT ag.user_name, ag.user_email, ag.access_type, ag.granted_at,
+                       ag.user_designation, ag.user_department
+                       FROM access_grants ag
+                       WHERE LOWER(ag.app_name) LIKE LOWER(:q)
+                       ORDER BY ag.granted_at DESC""",
+                    q=f"%{app_name}%")
+    conn.close()
+    return jsonify([{
+        "user_name": r[0], "user_email": r[1], "access_type": r[2],
+        "granted_at": r[3].isoformat() if r[3] else None,
+        "user_designation": r[4], "user_department": r[5]
+    } for r in rows])
+
+
+@app.route("/admin/access", methods=["GET"])
+@login_required
+def access_management():
+    return render_template("access_grants.html")
 
 
 @app.route("/admin", methods=["GET"])
