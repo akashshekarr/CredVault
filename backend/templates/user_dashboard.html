@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>5C Network — App Portal</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;1,9..144,300;1,9..144,400&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{--bg:#07090f;--bg-soft:#0b0e17;--surface:#10141f;--surface2:#161b29;--surface3:#1f2638;--border:#232b40;--border-soft:#1a2030;--text:#e7ecf5;--text-dim:#aab3c8;--muted:#6a7390;--cyan:#58E6D9;--violet:#9B7BFF;--pink:#FF7AC6;--acc-glow:rgba(88,230,217,0.14);--green:#4FE39B;--green-dim:rgba(79,227,155,0.14);--amber:#FFB547;--amber-dim:rgba(255,181,71,0.14);--red:#FF5C7A;--red-dim:rgba(255,92,122,0.14);--radius:14px}
+    html,body{height:100%}
+    body{font-family:'Space Grotesk',sans-serif;color:var(--text);background:var(--bg);min-height:100vh;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+    .aurora{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+    .aurora::before{content:'';position:absolute;width:700px;height:700px;background:radial-gradient(circle,var(--cyan),transparent 70%);top:-200px;left:-150px;filter:blur(80px);opacity:0.35;animation:drift1 22s ease-in-out infinite alternate}
+    .aurora::after{content:'';position:absolute;width:800px;height:800px;background:radial-gradient(circle,var(--violet),transparent 70%);bottom:-250px;right:-200px;filter:blur(80px);opacity:0.35;animation:drift2 26s ease-in-out infinite alternate}
+    @keyframes drift1{0%{transform:translate(0,0)}100%{transform:translate(100px,70px)}}
+    @keyframes drift2{0%{transform:translate(0,0)}100%{transform:translate(-80px,-50px)}}
+    .grid-bg{position:fixed;inset:0;z-index:0;pointer-events:none;background-image:linear-gradient(rgba(88,230,217,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(88,230,217,0.03) 1px,transparent 1px);background-size:48px 48px}
+    body>*:not(.aurora):not(.grid-bg){position:relative;z-index:1}
+
+    /* HEADER */
+    .header{background:rgba(11,14,23,0.7);backdrop-filter:blur(20px);border-bottom:1px solid var(--border-soft);padding:14px 32px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50}
+    .header::after{content:'';position:absolute;left:0;right:0;bottom:-1px;height:1px;background:linear-gradient(90deg,transparent,var(--cyan),var(--violet),transparent);opacity:0.4}
+    .logo{display:flex;align-items:center;gap:12px}
+    .logo-icon{width:36px;height:36px;background:linear-gradient(135deg,var(--cyan),var(--violet));border-radius:10px;display:flex;align-items:center;justify-content:center}
+    .logo-icon svg{width:18px;height:18px;fill:#07090f}
+    .logo-name{font-family:'Fraunces',serif;font-size:20px;font-weight:400;background:linear-gradient(180deg,#fff,#b8c2d8);-webkit-background-clip:text;background-clip:text;color:transparent}
+    .logo-tag{font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);margin-top:2px;letter-spacing:0.08em;text-transform:uppercase}
+    .user-pill{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--border-soft);border-radius:999px;padding:6px 14px 6px 6px}
+    .user-avatar{width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,var(--cyan),var(--violet));display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#07090f;overflow:hidden}
+    .user-avatar img{width:100%;height:100%;object-fit:cover}
+    .user-name{font-size:12px;font-weight:600;color:var(--text)}
+    .user-email{font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted)}
+    .btn-logout{background:none;border:1px solid var(--border);color:var(--muted);font-size:11px;font-family:'Space Grotesk',sans-serif;font-weight:600;padding:6px 12px;border-radius:8px;cursor:pointer;transition:all 0.18s;text-decoration:none}
+    .btn-logout:hover{color:var(--red);border-color:rgba(255,92,122,0.4)}
+
+    /* MAIN */
+    .main{padding:32px;max-width:1400px;margin:0 auto}
+
+    /* HERO */
+    .hero{background:linear-gradient(135deg,rgba(88,230,217,0.07),rgba(155,123,255,0.09));border:1px solid var(--border-soft);border-radius:20px;padding:28px 32px;margin-bottom:32px;display:flex;align-items:center;justify-content:space-between;overflow:hidden;position:relative}
+    .hero::before{content:'';position:absolute;inset:0;background:radial-gradient(600px 200px at 0% 50%,rgba(88,230,217,0.12),transparent 60%)}
+    .hero-text{position:relative;z-index:1}
+    .hero-greeting{font-size:13px;color:var(--text-dim);margin-bottom:6px}
+    .hero-greeting span{color:var(--cyan);font-weight:600}
+    .hero-title{font-family:'Fraunces',serif;font-size:32px;font-weight:400;line-height:1.1}
+    .hero-title em{font-style:italic;color:var(--cyan)}
+    .hero-sub{font-size:13px;color:var(--muted);margin-top:8px}
+    .hero-stats{display:flex;gap:20px;position:relative;z-index:1}
+    .hero-stat{text-align:center}
+    .hero-stat-val{font-family:'Fraunces',serif;font-size:32px;font-weight:400;background:linear-gradient(180deg,#fff,#8a93ad);-webkit-background-clip:text;background-clip:text;color:transparent}
+    .hero-stat-label{font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;margin-top:2px}
+
+    /* SECTION HEADERS */
+    .section-header{display:flex;align-items:center;gap:12px;margin-bottom:18px}
+    .section-title{font-size:11px;font-weight:600;letter-spacing:0.18em;text-transform:uppercase;color:var(--text-dim);display:flex;align-items:center;gap:8px}
+    .section-title::before{content:'';width:6px;height:6px;border-radius:2px;background:linear-gradient(135deg,var(--cyan),var(--violet));box-shadow:0 0 8px var(--cyan)}
+    .section-count{font-size:10px;font-family:'JetBrains Mono',monospace;background:var(--surface2);border:1px solid var(--border);border-radius:999px;padding:2px 10px;color:var(--muted)}
+
+    /* APP GRID */
+    .app-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-bottom:36px}
+
+    /* APP CARD */
+    .app-card{background:linear-gradient(180deg,rgba(16,20,31,0.9),rgba(11,14,23,0.9));border:1px solid var(--border-soft);border-radius:var(--radius);padding:20px;transition:all 0.25s ease;cursor:pointer;position:relative;overflow:hidden}
+    .app-card::before{content:'';position:absolute;inset:0;background:radial-gradient(300px 200px at 50% 0%,rgba(88,230,217,0.06),transparent 70%);opacity:0;transition:opacity 0.3s}
+    .app-card:hover{border-color:rgba(88,230,217,0.4);transform:translateY(-3px);box-shadow:0 12px 40px -10px rgba(88,230,217,0.2)}
+    .app-card:hover::before{opacity:1}
+    .app-card.has-access{border-color:rgba(79,227,155,0.3);background:linear-gradient(180deg,rgba(79,227,155,0.04),rgba(11,14,23,0.9))}
+    .app-card.has-access:hover{border-color:rgba(79,227,155,0.6);box-shadow:0 12px 40px -10px rgba(79,227,155,0.2)}
+    .app-card.pending{border-color:rgba(255,181,71,0.3);background:linear-gradient(180deg,rgba(255,181,71,0.04),rgba(11,14,23,0.9))}
+    .app-logo{width:48px;height:48px;border-radius:12px;margin-bottom:14px;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;flex-shrink:0;overflow:hidden;box-shadow:0 4px 12px -4px rgba(0,0,0,0.5)}
+    .app-logo img{width:100%;height:100%;object-fit:contain;border-radius:10px}
+    .app-card-name{font-size:14px;font-weight:600;margin-bottom:4px}
+    .app-card-url{font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);margin-bottom:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .app-card-action{width:100%;padding:9px;border-radius:9px;font-size:12px;font-weight:600;font-family:'Space Grotesk',sans-serif;cursor:pointer;transition:all 0.18s;border:none;display:flex;align-items:center;justify-content:center;gap:6px}
+    .btn-request{background:var(--surface2);border:1px solid var(--border);color:var(--text-dim)}
+    .btn-request:hover{border-color:var(--cyan);color:var(--cyan)}
+    .btn-access{background:var(--green-dim);border:1px solid rgba(79,227,155,0.35);color:#8FF1BC}
+    .btn-access:hover{background:rgba(79,227,155,0.2)}
+    .btn-pending{background:var(--amber-dim);border:1px solid rgba(255,181,71,0.35);color:var(--amber);cursor:default}
+    .access-badge{position:absolute;top:12px;right:12px;font-size:9px;font-family:'JetBrains Mono',monospace;padding:3px 8px;border-radius:999px}
+    .badge-access{background:var(--green-dim);color:#8FF1BC;border:1px solid rgba(79,227,155,0.3)}
+    .badge-pending{background:var(--amber-dim);color:var(--amber);border:1px solid rgba(255,181,71,0.3)}
+    .badge-individual{background:rgba(155,123,255,0.12);color:var(--violet);border:1px solid rgba(155,123,255,0.3)}
+
+    /* MODAL */
+    .modal-overlay{position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(3,5,10,0.85);z-index:99999;display:none;align-items:center;justify-content:center}
+    .modal-box{background:linear-gradient(180deg,var(--surface),var(--bg-soft));border:1px solid var(--border);border-radius:18px;width:460px;max-width:95vw;overflow:hidden;box-shadow:0 40px 100px -20px rgba(0,0,0,0.8),0 0 60px -20px rgba(155,123,255,0.4);position:relative;animation:slideUp 0.25s cubic-bezier(.2,.8,.2,1)}
+    @keyframes slideUp{from{transform:translateY(16px) scale(0.97);opacity:0}to{transform:translateY(0) scale(1);opacity:1}}
+    .modal-box::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--cyan),var(--violet),var(--pink))}
+    .modal-head{padding:18px 22px;border-bottom:1px solid var(--border-soft);display:flex;align-items:center;gap:14px;justify-content:space-between}
+    .modal-app-info{display:flex;align-items:center;gap:12px}
+    .modal-app-logo{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;overflow:hidden}
+    .modal-app-logo img{width:100%;height:100%;object-fit:contain}
+    .modal-app-name{font-family:'Fraunces',serif;font-size:20px;font-weight:400}
+    .modal-close{background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer;line-height:1;transition:color 0.18s}
+    .modal-close:hover{color:var(--cyan)}
+    .modal-body{padding:22px}
+    .modal-foot{padding:14px 22px;border-top:1px solid var(--border-soft);display:flex;gap:10px;justify-content:flex-end;background:rgba(255,255,255,0.018)}
+    .btn-modal{font-family:'Space Grotesk',sans-serif;font-size:12px;font-weight:600;padding:9px 18px;border-radius:10px;cursor:pointer;transition:all 0.18s;border:1px solid var(--border);background:var(--surface2);color:var(--text)}
+    .btn-modal:hover{border-color:var(--cyan);color:var(--cyan)}
+    .btn-modal-primary{background:linear-gradient(135deg,var(--cyan),var(--violet));color:#07090f;border:none;font-weight:700}
+    .btn-modal-primary:hover{filter:brightness(1.1)}
+    .cred-row{margin-bottom:14px}
+    .cred-label{font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:0.12em;text-transform:uppercase;margin-bottom:5px}
+    .cred-val{font-size:14px;font-family:'JetBrains Mono',monospace;color:var(--text);background:var(--surface2);border:1px solid var(--border-soft);border-radius:8px;padding:8px 12px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+    .cred-copy{background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;padding:2px;transition:color 0.18s;flex-shrink:0}
+    .cred-copy:hover{color:var(--cyan)}
+    .psk-input{width:100%;background:var(--bg-soft);border:1px solid var(--border);border-radius:9px;padding:11px 14px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:14px;outline:none;transition:all 0.18s;letter-spacing:0.1em}
+    .psk-input:focus{border-color:var(--cyan);box-shadow:0 0 0 3px var(--acc-glow)}
+    .psk-hint{font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-top:8px}
+    .err-msg{background:var(--red-dim);border:1px solid rgba(255,92,122,0.3);border-radius:8px;padding:10px 14px;font-size:12px;font-family:'JetBrains Mono',monospace;color:#FFB1C0;margin-top:12px;display:none}
+    .success-msg{background:var(--green-dim);border:1px solid rgba(79,227,155,0.3);border-radius:8px;padding:10px 14px;font-size:12px;font-family:'JetBrains Mono',monospace;color:var(--green);margin-top:12px;display:none}
+    .open-app-btn{display:flex;align-items:center;gap:8px;background:linear-gradient(135deg,var(--cyan),var(--violet));color:#07090f;border:none;border-radius:10px;padding:11px 18px;font-family:'Space Grotesk',sans-serif;font-size:13px;font-weight:700;cursor:pointer;text-decoration:none;transition:all 0.2s;margin-top:16px;width:100%;justify-content:center}
+    .open-app-btn:hover{filter:brightness(1.1)}
+
+    /* EMPTY STATE */
+    .empty-state{text-align:center;padding:48px 20px;color:var(--muted);font-size:13px}
+    .empty-state svg{width:48px;height:48px;margin:0 auto 16px;opacity:0.3;display:block}
+
+    /* REQUEST MODAL */
+    .request-note{background:var(--surface2);border:1px solid var(--border-soft);border-radius:10px;padding:14px;margin-bottom:16px;font-size:12px;color:var(--text-dim);font-family:'JetBrains Mono',monospace;line-height:1.6}
+
+    @media(max-width:640px){.main{padding:16px}.app-grid{grid-template-columns:repeat(2,1fr);gap:10px}.hero{padding:20px;flex-direction:column;gap:16px}.hero-stats{gap:14px}.hero-title{font-size:24px}}
+  </style>
+</head>
+<body>
+  <div class="aurora"></div>
+  <div class="grid-bg"></div>
+
+  <header class="header">
+    <div class="logo">
+      <div class="logo-icon"><svg viewBox="0 0 24 24"><path d="M12 1l9 4v6c0 5.55-3.84 10.74-9 12-5.16-1.26-9-6.45-9-12V5l9-4zm0 6a3 3 0 00-3 3 3 3 0 002 2.83V17h2v-4.17A3 3 0 0014 10a3 3 0 00-2-3z"/></svg></div>
+      <div>
+        <div class="logo-name">AppVault</div>
+        <div class="logo-tag">5C Network · App Portal</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <div class="user-pill">
+        <div class="user-avatar" id="userAvatar">?</div>
+        <div>
+          <div class="user-name" id="userName">Loading...</div>
+          <div class="user-email" id="userEmail"></div>
+        </div>
+      </div>
+      <a href="/user/logout" class="btn-logout">⎋ Logout</a>
+    </div>
+  </header>
+
+  <main class="main">
+    <div class="hero">
+      <div class="hero-text">
+        <div class="hero-greeting">Welcome back, <span id="heroName">—</span></div>
+        <div class="hero-title">Your <em>workspace</em> apps</div>
+        <div class="hero-sub">Request access or view your credentials for any 5C Network application.</div>
+      </div>
+      <div class="hero-stats">
+        <div class="hero-stat">
+          <div class="hero-stat-val" id="statTotal">—</div>
+          <div class="hero-stat-label">Total Apps</div>
+        </div>
+        <div class="hero-stat">
+          <div class="hero-stat-val" id="statAccess">—</div>
+          <div class="hero-stat-label">My Access</div>
+        </div>
+        <div class="hero-stat">
+          <div class="hero-stat-val" id="statPending">—</div>
+          <div class="hero-stat-label">Pending</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MY APPS -->
+    <div id="myAppsSection" style="display:none">
+      <div class="section-header">
+        <div class="section-title">My Apps</div>
+        <span class="section-count" id="myAppsCount">0</span>
+      </div>
+      <div class="app-grid" id="myAppsGrid"></div>
+    </div>
+
+    <!-- ALL APPS -->
+    <div class="section-header">
+      <div class="section-title">All Organisation Apps</div>
+      <span class="section-count" id="allAppsCount">0</span>
+    </div>
+    <div class="app-grid" id="allAppsGrid"><div style="color:var(--muted);font-size:12px;font-family:'JetBrains Mono',monospace;padding:20px">Loading apps...</div></div>
+  </main>
+
+  <!-- MODAL -->
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal-box">
+      <div class="modal-head">
+        <div class="modal-app-info">
+          <div class="modal-app-logo" id="modalLogo"></div>
+          <div class="modal-app-name" id="modalTitle">—</div>
+        </div>
+        <button class="modal-close" id="modalClose">×</button>
+      </div>
+      <div class="modal-body" id="modalBody"></div>
+      <div class="modal-foot" id="modalFoot"></div>
+    </div>
+  </div>
+
+<script>
+  let allApps = [];
+  let myGrants = [];
+  let myPending = [];
+  let currentUser = null;
+
+  const COLORS = ['#58E6D9','#9B7BFF','#4FE39B','#FF7AC6','#FFB547','#4A9BFF'];
+  const colorFor = s => { let h=0; for(const c of s) h=(h*31+c.charCodeAt(0))>>>0; return COLORS[h%COLORS.length]; };
+  const initials = s => s.trim().split(/\s+/).map(w=>w[0]||'').slice(0,2).join('').toUpperCase()||'?';
+
+  async function get(path){ const r=await fetch(path); if(!r.ok) throw new Error(r.status); return r.json(); }
+  async function post(path,body){ const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); return r.json(); }
+
+  function getLogoUrl(appName, appUrl) {
+    const logos = {
+      'chatgpt': 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/04/ChatGPT_logo.svg/512px-ChatGPT_logo.svg.png',
+      'claude': 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/8a/Claude_AI_logo.svg/512px-Claude_AI_logo.svg.png',
+      'cursor': 'https://www.cursor.com/favicon.ico',
+      'slack': 'https://a.slack-edge.com/80588/marketing/img/meta/favicon-32.png',
+      'notion': 'https://www.notion.so/images/favicon.ico',
+      'figma': 'https://static.figma.com/app/icon/1/favicon.ico',
+      'jira': 'https://wac-cdn.atlassian.com/assets/img/favicons/atlassian/favicon.png',
+      'github': 'https://github.githubassets.com/favicons/favicon.svg',
+      'google': 'https://www.google.com/favicon.ico',
+      'zoom': 'https://st1.zoom.us/zoom.ico',
+      'salesforce': 'https://www.salesforce.com/favicon.ico',
+      'hubspot': 'https://www.hubspot.com/favicon.ico',
+      'asana': 'https://asana.com/favicon.ico',
+      'trello': 'https://trello.com/favicon.ico',
+      'dropbox': 'https://www.dropbox.com/static/images/favicon.ico',
+      'canva': 'https://www.canva.com/favicon.ico',
+      'lovable': 'https://lovable.dev/favicon.ico',
+      'linear': 'https://linear.app/favicon.ico',
+      'intercom': 'https://www.intercom.com/favicon.ico',
+    };
+    const key = appName.toLowerCase().replace(/\s+/g,'');
+    if (logos[key]) return logos[key];
+    if (appUrl) {
+      try {
+        const domain = new URL(appUrl).hostname;
+        return `https://www.google.com/s2/favicons?domain=${domain}&sz=64`;
+      } catch(e) {}
+    }
+    return null;
+  }
+
+  function renderLogo(appName, appUrl, size=48) {
+    const logoUrl = getLogoUrl(appName, appUrl);
+    const color = colorFor(appName);
+    if (logoUrl) {
+      return `<img src="${logoUrl}" onerror="this.parentElement.innerHTML='<span style=color:#07090f>${initials(appName)}</span>';this.parentElement.style.background='${color}'" alt="${appName}"/>`;
+    }
+    return `<span style="color:#07090f">${initials(appName)}</span>`;
+  }
+
+  function getAppBgColor(appName) {
+    const whites = ['chatgpt','claude','cursor','slack','notion','figma','jira','github','zoom','salesforce','hubspot','asana','trello','dropbox','canva','lovable','linear','intercom'];
+    const key = appName.toLowerCase().replace(/\s+/g,'');
+    return whites.includes(key) ? '#ffffff' : colorFor(appName);
+  }
+
+  async function loadDashboard() {
+    try {
+      const [user, apps, grants, pending] = await Promise.all([
+        get('/user/me'),
+        get('/user/apps'),
+        get('/user/my-grants'),
+        get('/user/my-pending')
+      ]);
+
+      currentUser = user;
+      allApps = apps;
+      myGrants = grants;
+      myPending = pending;
+
+      // Update header
+      document.getElementById('userName').textContent = user.name || user.email.split('@')[0];
+      document.getElementById('userEmail').textContent = user.email;
+      document.getElementById('heroName').textContent = (user.name || user.email.split('@')[0]).split(' ')[0];
+      if (user.picture) {
+        document.getElementById('userAvatar').innerHTML = `<img src="${user.picture}" alt="">`;
+      } else {
+        document.getElementById('userAvatar').textContent = initials(user.name || user.email.split('@')[0]);
+      }
+
+      // Stats
+      document.getElementById('statTotal').textContent = apps.length;
+      document.getElementById('statAccess').textContent = grants.length;
+      document.getElementById('statPending').textContent = pending.length;
+
+      renderApps();
+    } catch(e) {
+      console.error(e);
+      if (e.message === '401') window.location.href = '/user/login';
+    }
+  }
+
+  function renderApps() {
+    const grantedAppNames = new Set(myGrants.map(g => g.app_name));
+    const pendingAppNames = new Set(myPending.map(p => p.app_name));
+
+    // MY APPS section
+    const myApps = allApps.filter(a => grantedAppNames.has(a.name));
+    const myAppsSection = document.getElementById('myAppsSection');
+    const myAppsGrid = document.getElementById('myAppsGrid');
+    if (myApps.length > 0) {
+      myAppsSection.style.display = 'block';
+      document.getElementById('myAppsCount').textContent = myApps.length;
+      myAppsGrid.innerHTML = myApps.map(app => renderAppCard(app, 'access', grantedAppNames, pendingAppNames)).join('');
+    } else {
+      myAppsSection.style.display = 'none';
+    }
+
+    // ALL APPS section (exclude ones already in my apps)
+    const otherApps = allApps.filter(a => !grantedAppNames.has(a.name));
+    document.getElementById('allAppsCount').textContent = allApps.length;
+    const allAppsGrid = document.getElementById('allAppsGrid');
+    if (!allApps.length) {
+      allAppsGrid.innerHTML = '<div class="empty-state"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>No apps available yet.</div>';
+      return;
+    }
+    allAppsGrid.innerHTML = allApps.map(app => renderAppCard(app, 'all', grantedAppNames, pendingAppNames)).join('');
+  }
+
+  function renderAppCard(app, context, grantedAppNames, pendingAppNames) {
+    const hasAccess = grantedAppNames.has(app.name);
+    const isPending = pendingAppNames.has(app.name);
+    const bgColor = getAppBgColor(app.name);
+    const logoHtml = renderLogo(app.name, app.url);
+
+    let cardClass = 'app-card';
+    let badge = '';
+    let actionBtn = '';
+
+    if (hasAccess) {
+      const grant = myGrants.find(g => g.app_name === app.name);
+      cardClass += ' has-access';
+      badge = `<span class="access-badge ${grant?.access_type === 'Individual ID' ? 'badge-individual' : 'badge-access'}">${grant?.access_type === 'Individual ID' ? 'Individual' : '✓ Access'}</span>`;
+      actionBtn = `<button class="app-card-action btn-access" onclick="openAccessModal('${app.name}','${app.url||''}')">🔓 View Credentials</button>`;
+    } else if (isPending) {
+      cardClass += ' pending';
+      badge = `<span class="access-badge badge-pending">⏳ Pending</span>`;
+      actionBtn = `<button class="app-card-action btn-pending">Request Pending...</button>`;
+    } else {
+      actionBtn = `<button class="app-card-action btn-request" onclick="openRequestModal('${app.name}')">+ Request Access</button>`;
+    }
+
+    return `
+      <div class="${cardClass}">
+        ${badge}
+        <div class="app-logo" style="background:${bgColor}">${logoHtml}</div>
+        <div class="app-card-name">${app.name}</div>
+        <div class="app-card-url">${app.url ? new URL(app.url).hostname : '—'}</div>
+        ${actionBtn}
+      </div>`;
+  }
+
+  // ── MODALS ──
+  function openModal() {
+    const o = document.getElementById('modalOverlay');
+    o.style.display = 'flex';
+    o.style.alignItems = 'center';
+    o.style.justifyContent = 'center';
+  }
+  function closeModal() {
+    document.getElementById('modalOverlay').style.display = 'none';
+  }
+  document.getElementById('modalClose').addEventListener('click', closeModal);
+  document.getElementById('modalOverlay').addEventListener('click', e => { if(e.target.id==='modalOverlay') closeModal(); });
+
+  function setModalLogo(appName, appUrl) {
+    const logoEl = document.getElementById('modalLogo');
+    const bgColor = getAppBgColor(appName);
+    logoEl.style.background = bgColor;
+    logoEl.innerHTML = renderLogo(appName, appUrl);
+  }
+
+  // ── REQUEST ACCESS MODAL ──
+  function openRequestModal(appName) {
+    document.getElementById('modalTitle').textContent = appName;
+    setModalLogo(appName, allApps.find(a=>a.name===appName)?.url || '');
+    document.getElementById('modalBody').innerHTML = `
+      <div class="request-note">
+        Your request will be sent to the IT admin for approval.<br>
+        You'll receive an email with a pre-shared key once approved.
+      </div>
+      <div style="margin-bottom:12px">
+        <div class="cred-label">Reason for access (optional)</div>
+        <textarea id="requestReason" rows="3" style="width:100%;background:var(--bg-soft);border:1px solid var(--border);border-radius:9px;padding:10px 13px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;outline:none;resize:none" placeholder="e.g. Need access for Q4 analytics project..."></textarea>
+      </div>
+      <div class="err-msg" id="reqErr"></div>
+      <div class="success-msg" id="reqOk"></div>`;
+    document.getElementById('modalFoot').innerHTML = `
+      <button class="btn-modal" onclick="closeModal()">Cancel</button>
+      <button class="btn-modal btn-modal-primary" onclick="submitRequest('${appName}')">Send Request →</button>`;
+    openModal();
+  }
+
+  async function submitRequest(appName) {
+    const reason = document.getElementById('requestReason').value.trim();
+    const errEl = document.getElementById('reqErr');
+    const okEl = document.getElementById('reqOk');
+    errEl.style.display='none'; okEl.style.display='none';
+    const r = await post('/user/request-access', { app_name: appName, reason });
+    if (r.success) {
+      okEl.textContent = 'Request sent! You\'ll get an email when approved.';
+      okEl.style.display='block';
+      document.getElementById('modalFoot').innerHTML = `<button class="btn-modal" onclick="closeModal();loadDashboard()">Close</button>`;
+    } else {
+      errEl.textContent = r.error || 'Failed to send request.';
+      errEl.style.display='block';
+    }
+  }
+
+  // ── ACCESS / PSK MODAL ──
+  function openAccessModal(appName, appUrl) {
+    const grant = myGrants.find(g => g.app_name === appName);
+    document.getElementById('modalTitle').textContent = appName;
+    setModalLogo(appName, appUrl);
+
+    if (grant?.access_type === 'Individual ID') {
+      document.getElementById('modalBody').innerHTML = `
+        <div class="request-note">
+          You have <strong style="color:var(--violet)">Individual ID</strong> access to this app.<br>
+          Log in using your <strong style="color:var(--cyan)">5C Network email</strong> or the credentials provided by IT.
+        </div>
+        <a href="${appUrl}" target="_blank" class="open-app-btn">🚀 Open ${appName}</a>`;
+      document.getElementById('modalFoot').innerHTML = `<button class="btn-modal" onclick="closeModal()">Close</button>`;
+    } else {
+      // Check if there's an active PSK token
+      document.getElementById('modalBody').innerHTML = `
+        <div class="request-note">
+          Enter the <strong style="color:var(--cyan)">pre-shared key</strong> from your approval email to view credentials.
+        </div>
+        <div style="position:relative">
+          <input class="psk-input" type="password" id="pskInput" placeholder="Enter your pre-shared key..." autocomplete="off"/>
+          <span onclick="togglePskVisibility()" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--muted);font-size:16px">👁</span>
+        </div>
+        <div class="psk-hint">Check your email for the key. It expires in 24 hours.</div>
+        <div class="err-msg" id="pskErr"></div>`;
+      document.getElementById('modalFoot').innerHTML = `
+        <button class="btn-modal" onclick="closeModal()">Cancel</button>
+        <button class="btn-modal btn-modal-primary" onclick="submitPsk('${appName}','${appUrl}')">Unlock →</button>`;
+    }
+    openModal();
+    setTimeout(() => document.getElementById('pskInput')?.focus(), 100);
+  }
+
+  function togglePskVisibility() {
+    const inp = document.getElementById('pskInput');
+    if (!inp) return;
+    inp.type = inp.type === 'password' ? 'text' : 'password';
+  }
+
+  async function submitPsk(appName, appUrl) {
+    const psk = document.getElementById('pskInput').value.trim();
+    const errEl = document.getElementById('pskErr');
+    errEl.style.display='none';
+    if (!psk) { errEl.textContent='Please enter your key.'; errEl.style.display='block'; return; }
+
+    const r = await post('/user/verify-psk', { app_name: appName, psk });
+    if (r.success) {
+      const c = typeof r.credentials === 'string' ? JSON.parse(r.credentials) : r.credentials;
+      document.getElementById('modalBody').innerHTML = `
+        <div class="cred-row">
+          <div class="cred-label">Username / Email</div>
+          <div class="cred-val">
+            <span id="credUser">${c.username}</span>
+            <button class="cred-copy" onclick="copyText('${c.username}','credUser')" title="Copy">📋</button>
+          </div>
+        </div>
+        <div class="cred-row">
+          <div class="cred-label">Password</div>
+          <div class="cred-val">
+            <span id="credPass">••••••••••</span>
+            <div style="display:flex;gap:6px">
+              <button class="cred-copy" onclick="togglePass('${c.password}')" title="Show/Hide">👁</button>
+              <button class="cred-copy" onclick="copyText('${c.password}','credPass')" title="Copy">📋</button>
+            </div>
+          </div>
+        </div>
+        <a href="${c.app_url || appUrl}" target="_blank" class="open-app-btn">🚀 Open ${appName}</a>
+        <div style="font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-top:10px;text-align:center">This key has been used. Request a new one if needed.</div>`;
+      document.getElementById('modalFoot').innerHTML = `<button class="btn-modal" onclick="closeModal()">Close</button>`;
+    } else {
+      errEl.textContent = r.error || 'Invalid key. Please check your email.';
+      errEl.style.display='block';
+    }
+  }
+
+  let passVisible = false;
+  function togglePass(password) {
+    const el = document.getElementById('credPass');
+    passVisible = !passVisible;
+    el.textContent = passVisible ? password : '••••••••••';
+  }
+
+  function copyText(text, elId) {
+    navigator.clipboard.writeText(text).then(() => {
+      const el = document.getElementById(elId);
+      const original = el.textContent;
+      el.textContent = '✓ Copied!';
+      el.style.color = 'var(--green)';
+      setTimeout(() => { el.textContent = original; el.style.color = ''; }, 1500);
+    });
+  }
+
+  document.addEventListener('keydown', e => { if(e.key==='Enter') { const psk=document.getElementById('pskInput'); if(psk && document.getElementById('modalOverlay').style.display==='flex') { const appName=document.getElementById('modalTitle').textContent; submitPsk(appName,''); } } });
+
+  loadDashboard();
+</script>
+</body>
+</html>

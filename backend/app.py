@@ -241,18 +241,11 @@ def google_callback():
         token = google.authorize_access_token()
         user_info = token.get('userinfo')
         email = user_info.get('email', '')
-
-        # Check if this email exists in admins table
-        conn = get_db()
-        rows = conn.run("SELECT username, role FROM admins WHERE LOWER(username)=LOWER(:e)", e=email)
-        conn.close()
-
-        if not rows:
+        if not email.endswith('@5cnetwork.com'):
             return redirect(url_for('admin_login_page') + '?error=unauthorized')
-
         session['admin_logged_in'] = True
-        session['admin_username'] = rows[0][0]
-        session['admin_role'] = rows[0][1]
+        session['admin_username'] = email
+        session['admin_role'] = 'admin'
         session['admin_name'] = user_info.get('name', email)
         session.permanent = True
         return redirect(url_for('admin_dashboard'))
@@ -477,13 +470,14 @@ def admin_logs():
     conn.close()
     return jsonify([{"user_email": r[0], "app_name": r[1], "action": r[2], "timestamp": r[3].isoformat() if r[3] else None} for r in rows])
 
+
 @app.route("/admin/applications", methods=["GET"])
 @login_required
 def admin_applications():
     conn = get_db()
-    rows = conn.run("SELECT id, name, url, username, password, created_at FROM applications ORDER BY name")
+    rows = conn.run("SELECT id, name, url, username, created_at FROM applications ORDER BY name")
     conn.close()
-    return jsonify([{"id": r[0], "name": r[1], "url": r[2], "username": r[3], "password": r[4], "created_at": r[5].isoformat() if r[5] else None} for r in rows])
+    return jsonify([{"id": r[0], "name": r[1], "url": r[2], "username": r[3], "created_at": r[4].isoformat() if r[4] else None} for r in rows])
 
 
 @app.route("/admin/applications", methods=["POST"])
@@ -618,6 +612,213 @@ def app_report(app_name):
         "user_designation": r[4], "user_department": r[5]
     } for r in rows])
 
+
+
+# ── USER AUTH ──
+
+@app.route("/user/login", methods=["GET"])
+def user_login_page_render():
+    if session.get('user_logged_in'):
+        return redirect('/dashboard')
+    return render_template('user_login.html')
+
+
+@app.route("/user/login/google")
+def user_login():
+    redirect_uri = os.getenv("PORTAL_BASE_URL") + "/user/auth/callback"
+    return google.authorize_redirect(redirect_uri, prompt='select_account')
+
+
+@app.route("/user/auth/callback")
+def user_auth_callback():
+    try:
+        token = google.authorize_access_token()
+        user_info = token.get('userinfo')
+        email = user_info.get('email', '')
+        domain = email.split('@')[-1].lower()
+        if domain not in ['5cnetwork.com', '5cnetwork.in']:
+            return redirect('/user/login?error=unauthorized')
+        session['user_logged_in'] = True
+        session['user_email'] = email
+        session['user_name'] = user_info.get('name', '')
+        session['user_picture'] = user_info.get('picture', '')
+        session.permanent = True
+        return redirect('/dashboard')
+    except Exception as e:
+        print(f"User auth error: {e}")
+        return redirect('/user/login?error=auth_failed')
+
+
+@app.route("/user/logout")
+def user_logout():
+    session.pop('user_logged_in', None)
+    session.pop('user_email', None)
+    session.pop('user_name', None)
+    session.pop('user_picture', None)
+    return redirect('/user/login')
+
+
+def user_login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not session.get('user_logged_in'):
+            return redirect('/user/login')
+        return f(*args, **kwargs)
+    return decorated
+
+
+@app.route("/dashboard")
+@user_login_required
+def user_dashboard():
+    return render_template("user_dashboard.html")
+
+
+@app.route("/user/me")
+@user_login_required
+def user_me():
+    return jsonify({
+        "email": session.get('user_email'),
+        "name": session.get('user_name'),
+        "picture": session.get('user_picture')
+    })
+
+
+@app.route("/user/apps")
+@user_login_required
+def user_apps():
+    conn = get_db()
+    rows = conn.run("SELECT id, name, url, username, created_at FROM applications ORDER BY name")
+    conn.close()
+    return jsonify([{"id": r[0], "name": r[1], "url": r[2], "username": r[3]} for r in rows])
+
+
+@app.route("/user/my-grants")
+@user_login_required
+def user_my_grants():
+    user_email = session.get('user_email')
+    email_prefix = user_email.split('@')[0].lower().replace('.', ' ')
+    conn = get_db()
+    # Lookup user name
+    urows = conn.run("SELECT name FROM users WHERE LOWER(name) LIKE :q LIMIT 1",
+                     q=f"%{email_prefix.split(' ')[0]}%")
+    user_name = urows[0][0] if urows else email_prefix
+
+    rows = conn.run("""SELECT app_name, access_type, granted_at, notes
+                       FROM access_grants
+                       WHERE LOWER(user_name) LIKE LOWER(:q) OR LOWER(user_email)=LOWER(:e)
+                       ORDER BY granted_at DESC""",
+                    q=f"%{email_prefix.split(' ')[0]}%", e=user_email)
+    conn.close()
+    return jsonify([{
+        "app_name": r[0], "access_type": r[1],
+        "granted_at": r[2].isoformat() if r[2] else None, "notes": r[3]
+    } for r in rows])
+
+
+@app.route("/user/my-pending")
+@user_login_required
+def user_my_pending():
+    user_email = session.get('user_email')
+    conn = get_db()
+    rows = conn.run("""SELECT app_name, created_at FROM pending_requests
+                       WHERE user_email=:e AND status='pending'
+                       ORDER BY created_at DESC""", e=user_email)
+    conn.close()
+    return jsonify([{"app_name": r[0], "created_at": r[1].isoformat() if r[1] else None} for r in rows])
+
+
+@app.route("/user/request-access", methods=["POST"])
+@user_login_required
+def user_request_access():
+    data = request.json
+    user_email = session.get('user_email')
+    app_name = data.get("app_name", "").strip()
+    reason = data.get("reason", "").strip()
+
+    if not app_name:
+        return jsonify({"error": "app_name is required"}), 400
+
+    conn = get_db()
+    # Check app exists
+    rows = conn.run("SELECT id FROM applications WHERE name=:n", n=app_name)
+    if not rows:
+        conn.close()
+        return jsonify({"error": f"App not found"}), 404
+
+    # Check no duplicate pending
+    existing = conn.run("SELECT id FROM pending_requests WHERE user_email=:e AND app_name=:a AND status='pending'",
+                        e=user_email, a=app_name)
+    if existing:
+        conn.close()
+        return jsonify({"error": "You already have a pending request for this app"}), 400
+
+    # Lookup user details
+    email_prefix = user_email.split('@')[0].lower().replace('.', ' ')
+    urows = conn.run("SELECT name, designation, department FROM users WHERE LOWER(name) LIKE :q LIMIT 1",
+                     q=f"%{email_prefix.split(' ')[0]}%")
+    user_name = urows[0][0] if urows else None
+    user_designation = urows[0][1] if urows else None
+    user_department = urows[0][2] if urows else None
+
+    request_id = generate_id()
+    conn.run("""INSERT INTO pending_requests (id, user_email, app_name, reason, status, user_name, user_designation, user_department)
+                VALUES (:id, :e, :a, :r, 'pending', :un, :ud, :udept)""",
+             id=request_id, e=user_email, a=app_name, r=reason,
+             un=user_name, ud=user_designation, udept=user_department)
+    conn.run("INSERT INTO audit_logs (user_email, app_name, action) VALUES (:e, :a, :ac)",
+             e=user_email, a=app_name, ac="access_requested")
+    conn.close()
+
+    threading.Thread(target=send_admin_notification, args=(user_email, app_name, request_id), daemon=True).start()
+    return jsonify({"success": True})
+
+
+@app.route("/user/verify-psk", methods=["POST"])
+@user_login_required
+def user_verify_psk():
+    data = request.json
+    user_email = session.get('user_email')
+    app_name = data.get("app_name", "").strip()
+    psk_input = data.get("psk", "").strip()
+
+    if not app_name or not psk_input:
+        return jsonify({"error": "app_name and psk are required"}), 400
+
+    conn = get_db()
+    # Find latest unused token for this user and app
+    rows = conn.run("""SELECT id, psk_hash, encrypted_creds, expires_at, used
+                       FROM psk_tokens
+                       WHERE user_email=:e AND app_name=:a AND used=false
+                       ORDER BY created_at DESC LIMIT 1""",
+                    e=user_email, a=app_name)
+
+    if not rows:
+        conn.close()
+        return jsonify({"error": "No active token found. Please request access again."}), 404
+
+    token_id, psk_hash, encrypted_creds, expires_at, used = rows[0]
+
+    if expires_at:
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        if datetime.now(timezone.utc) > expires_at:
+            conn.close()
+            return jsonify({"error": "Your key has expired. Please request access again."}), 400
+
+    if hashlib.sha256(psk_input.encode()).hexdigest() != psk_hash:
+        conn.close()
+        return jsonify({"error": "Incorrect key. Please check your email."}), 401
+
+    if isinstance(encrypted_creds, str):
+        encrypted_creds = json.loads(encrypted_creds)
+
+    decrypted = decrypt_credentials(encrypted_creds, psk_input)
+    conn.run("UPDATE psk_tokens SET used=true WHERE id=:id", id=token_id)
+    conn.run("INSERT INTO audit_logs (user_email, app_name, action) VALUES (:e, :a, :ac)",
+             e=user_email, a=app_name, ac="credentials_accessed_dashboard")
+    conn.close()
+
+    return jsonify({"success": True, "credentials": decrypted})
 
 @app.route("/admin/access", methods=["GET"])
 @login_required
