@@ -347,14 +347,30 @@
 
   /* ── VIEW APP ── */
   function viewApp(id){
-    const app=allApps.find(a=>a.id===id); if(!app) return;
+    const app=allApps.find(a=>String(a.id)===String(id)); if(!app) return;
     openModal(app.name,
       `<div class="field"><div class="field-label">App Name</div><div class="field-val">${app.name}</div></div>
        <div class="field"><div class="field-label">URL</div><a class="field-val link" href="${app.url||'#'}" target="_blank">${app.url||'—'}</a></div>
-       <div class="field"><div class="field-label">Username</div><div class="field-val">${app.username||'—'}</div></div>
-       <div class="field"><div class="field-label">Password</div><div class="field-val">••••••••••</div></div>
-       <div class="field"><div class="field-label">Document ID</div><div class="field-val dim">${app.id}</div></div>`,
-      `<button class="btn" onclick="closeModal()">Close</button>`);
+       <div class="field"><div class="field-label">Username / Email</div><div class="field-val">${app.username||'—'}</div></div>
+       <div class="field"><div class="field-label">Password</div><div class="field-val" id="appPassField" style="cursor:pointer" onclick="toggleAppPass()">••••••••••</div></div>
+       <div class="field"><div class="field-label">Added On</div><div class="field-val dim">${app.created_at ? new Date(app.created_at).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}) : '—'}</div></div>`,
+      `<button class="btn" onclick="closeModal()">Close</button>`
+    );
+    // Store password for reveal
+    window._currentAppPass = app.password || '—';
+  }
+
+  function toggleAppPass(){
+    const el = document.getElementById('appPassField');
+    if(el.textContent === '••••••••••'){
+      el.textContent = window._currentAppPass;
+      el.style.background = 'rgba(255,92,122,0.08)';
+      el.style.borderRadius = '6px';
+      el.style.padding = '4px 8px';
+    } else {
+      el.textContent = '••••••••••';
+      el.style.background = '';
+    }
   }
 
   /* ── PENDING ── */
@@ -387,7 +403,7 @@
     const el=document.getElementById('appsPanel');
     if(!apps.length){el.innerHTML='<div class="empty">no apps yet</div>';return;}
     el.innerHTML=apps.map(a=>`
-      <div class="app-row" onclick="viewApp('${a.id}')">
+      <div class="app-row" onclick="viewApp(${a.id})">
         <div class="app-avatar" style="background:${colorFor(a.name)};color:#07090f">${initials(a.name)}</div>
         <div class="app-info"><div class="app-name">${a.name}</div><div class="app-user">${a.username||'—'}</div></div>
         <span class="badge badge-g">active</span>

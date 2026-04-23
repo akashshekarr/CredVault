@@ -477,14 +477,13 @@ def admin_logs():
     conn.close()
     return jsonify([{"user_email": r[0], "app_name": r[1], "action": r[2], "timestamp": r[3].isoformat() if r[3] else None} for r in rows])
 
-
 @app.route("/admin/applications", methods=["GET"])
 @login_required
 def admin_applications():
     conn = get_db()
-    rows = conn.run("SELECT id, name, url, username, created_at FROM applications ORDER BY name")
+    rows = conn.run("SELECT id, name, url, username, password, created_at FROM applications ORDER BY name")
     conn.close()
-    return jsonify([{"id": r[0], "name": r[1], "url": r[2], "username": r[3], "created_at": r[4].isoformat() if r[4] else None} for r in rows])
+    return jsonify([{"id": r[0], "name": r[1], "url": r[2], "username": r[3], "password": r[4], "created_at": r[5].isoformat() if r[5] else None} for r in rows])
 
 
 @app.route("/admin/applications", methods=["POST"])
