@@ -387,6 +387,21 @@ def approve_request(request_id):
     conn.run("UPDATE pending_requests SET status='approved', reviewed_at=NOW() WHERE id=:id", id=request_id)
     conn.run("INSERT INTO audit_logs (user_email, app_name, action) VALUES (:e, :a, :ac)",
              e=user_email, a=app_name, ac="credentials_sent")
+
+    # Auto-log to access_grants for tracking
+    email_prefix = user_email.split('@')[0].lower().replace('.', ' ')
+    urows = conn.run("SELECT name, designation, department FROM users WHERE LOWER(name) LIKE :q LIMIT 1",
+                     q=f"%{email_prefix.split(' ')[0]}%")
+    u_name = urows[0][0] if urows else user_email.split('@')[0]
+    u_desig = urows[0][1] if urows else ''
+    u_dept = urows[0][2] if urows else ''
+    existing = conn.run("SELECT id FROM access_grants WHERE LOWER(user_name)=LOWER(:n) AND app_name=:a AND access_type='Credentials'",
+                        n=u_name, a=app_name)
+    if not existing:
+        conn.run("""INSERT INTO access_grants (user_name, user_email, user_designation, user_department, app_name, access_type, granted_by, notes)
+                    VALUES (:un, :ue, :ud, :udept, :a, 'Credentials', 'auto', 'Auto-logged via CredVault approval')""",
+                 un=u_name, ue=user_email, ud=u_desig, udept=u_dept, a=app_name)
+
     conn.close()
     portal_link = f"{os.getenv('PORTAL_BASE_URL')}/access/{token_id}"
     threading.Thread(target=send_credentials_email,

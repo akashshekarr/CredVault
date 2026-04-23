@@ -186,9 +186,9 @@
         <span id="connDot" class="conn-dot offline"></span>
         <span id="connText">connecting...</span>
       </div>
-      <button class="btn" onclick="loadAll()">↺ Refresh</button>
       <a href="/admin/access" class="btn" style="text-decoration:none">📋 Access Management</a>
-      <a href="/admin/logout" class="btn" style="text-decoration:none;color:var(--red);border-color:var(--red)">⎋ Logout</a>
+      <button class="btn" onclick="loadAll()">↺ Refresh</button>
+      <a href="/admin/logout" class="btn" style="text-decoration:none;color:var(--red);border-color:rgba(255,92,122,0.3)">⎋ Logout</a>
     </div>
   </header>
 
@@ -257,17 +257,10 @@
       </div>
     </section>
 
-    <section class="grid-2">
+    <section style="margin-bottom:16px">
       <div class="panel">
         <div class="panel-head"><div class="panel-title">Active PSK Tokens</div><span id="tokenCount" class="badge badge-a">—</span></div>
         <div id="tokensPanel"><div class="loading">loading tokens...</div></div>
-      </div>
-      <div class="panel">
-        <div class="panel-head">
-          <div class="panel-title">Users per Application</div>
-          <button class="btn btn-sm" id="addUserBtn">+ Add User</button>
-        </div>
-        <div id="usersPerAppPanel"><div class="loading">computing...</div></div>
       </div>
     </section>
 
@@ -300,7 +293,7 @@
     }
   })();
 
-  let allApps=[],allLogs=[],allTokens=[],allUsers=[];
+  let allApps=[],allLogs=[],allTokens=[];
   const COLORS=['#58E6D9','#9B7BFF','#4FE39B','#FF7AC6','#FFB547','#4A9BFF','#FF5C7A','#C9A9FF'];
   const initials=(s='')=>s.trim().split(/\s+/).map(w=>w[0]||'').slice(0,2).join('').toUpperCase()||'?';
   const colorFor=(s='')=>{let h=0;for(const c of s)h=(h*31+c.charCodeAt(0))>>>0;return COLORS[h%COLORS.length];};
@@ -350,25 +343,7 @@
     catch(e){alert('Error: '+e.message);}
   }
 
-  /* ── ADD USER ── */
-  document.getElementById('addUserBtn').addEventListener('click',function(){
-    openModal('Add New User',
-      `<div class="field"><div class="field-label">Full Name *</div><input id="uName" class="inp" style="width:100%" placeholder="e.g. John Smith"></div>
-       <div class="field"><div class="field-label">Designation</div><input id="uDesig" class="inp" style="width:100%" placeholder="e.g. Software Engineer"></div>
-       <div class="field"><div class="field-label">Department</div><input id="uDept" class="inp" style="width:100%" placeholder="e.g. Engineering"></div>
-       <div class="field"><div class="field-label">Emp ID (optional)</div><input id="uEmpId" class="inp" style="width:100%" placeholder="e.g. 1748"></div>`,
-      `<button class="btn" onclick="closeModal()">Cancel</button>
-       <button class="btn btn-primary" onclick="submitUser()">Add User</button>`);
-  });
-  async function submitUser(){
-    const name=document.getElementById('uName').value.trim();
-    const desig=document.getElementById('uDesig').value.trim();
-    const dept=document.getElementById('uDept').value.trim();
-    const empId=document.getElementById('uEmpId').value.trim();
-    if(!name){alert('Name is required.');return;}
-    try{await post('/admin/users',{name,designation:desig,department:dept,emp_id:empId||null});closeModal();loadAll();}
-    catch(e){alert('Error: '+e.message);}
-  }
+
 
   /* ── VIEW APP ── */
   function viewApp(id){
@@ -425,7 +400,6 @@
     document.getElementById('sAccess').textContent=logs.filter(l=>(l.action||'').includes('accessed')||(l.action||'').includes('sent')).length;
     document.getElementById('sUsers').textContent=new Set(logs.map(l=>l.user_email).filter(Boolean)).size;
     filterLogs();
-    renderUsersPerApp(logs);
   }
   function filterLogs(){
     const q=(document.getElementById('logSearch').value||'').toLowerCase();
@@ -462,66 +436,17 @@
     }).join('');
   }
 
-  /* ── USERS PER APP ── */
-  function renderUsersPerApp(logs){
-    const appUsers={};
-    logs.forEach(l=>{
-      if(!l.app_name||!l.user_email) return;
-      if((l.action||'').includes('accessed')||(l.action||'').includes('sent')){
-        if(!appUsers[l.app_name]) appUsers[l.app_name]=new Set();
-        appUsers[l.app_name].add(l.user_email);
-      }
-    });
-    const el=document.getElementById('usersPerAppPanel');
-    const apps=Object.entries(appUsers).sort((a,b)=>b[1].size-a[1].size);
-    if(!apps.length){el.innerHTML='<div class="empty">no access data yet</div>';return;}
-    el.innerHTML='<div class="app-users-grid">'+apps.map(([appName,users])=>{
-      const userList=[...users];
-      return`<div class="app-users-card">
-        <div class="app-users-header">
-          <div class="app-users-avatar" style="background:${colorFor(appName)};color:#07090f">${initials(appName)}</div>
-          <div class="app-users-name">${appName}</div>
-          <div class="app-users-count">${userList.length} user${userList.length!==1?'s':''}</div>
-        </div>
-        <div class="app-users-list">
-          ${userList.map(u=>{
-            const emailPrefix=u.split('@')[0].toLowerCase();
-            const found=allUsers.find(usr=>usr.name&&usr.name.toLowerCase().split(' ').some(part=>part.startsWith(emailPrefix.substring(0,4))));
-            const display=found?found.name:emailPrefix;
-            return`<span class="user-chip" title="${u}">${display}</span>`;
-          }).join('')}
-        </div>
-      </div>`;
-    }).join('')+'</div>';
-  }
-
   /* ── LOAD ALL ── */
   async function loadAll(){
     hideErr();setConn(false);
     try{
-      const [apps,logs,tokens,pending,users]=await Promise.all([
-        get('/admin/applications'),get('/admin/logs'),get('/admin/tokens'),
-        get('/admin/pending'),get('/admin/users'),
+      const [apps,logs,tokens,pending]=await Promise.all([
+        get('/admin/applications'),get('/admin/logs'),get('/admin/tokens'),get('/admin/pending'),
       ]);
       setConn(true);
-      allUsers=users;
       renderApps(apps);renderLogs(logs);renderTokens(tokens);renderPending(pending);
     }catch(e){setConn(false);showErr('Cannot reach Flask — make sure the server is running.');}
   }
-// Auto logout after 30 mins inactivity
-let inactivityTimer;
-function resetTimer(){
-  clearTimeout(inactivityTimer);
-  inactivityTimer = setTimeout(() => {
-    alert('Session expired due to inactivity. You will be logged out.');
-    window.location.href = '/admin/logout';
-  }, 30 * 60 * 1000);
-}
-['mousemove','keydown','click','scroll','touchstart'].forEach(e => 
-  document.addEventListener(e, resetTimer, true)
-);
-resetTimer();
-
 
   loadAll();
 </script>

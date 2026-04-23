@@ -85,7 +85,10 @@
       </div>
       <div class="field">
         <label>Password</label>
-        <input type="password" id="loginPass" placeholder="••••••••" autocomplete="current-password"/>
+        <div style="position:relative">
+  <input type="password" id="loginPass" placeholder="••••••••" autocomplete="current-password" style="width:100%;padding-right:40px"/>
+  <span onclick="togglePwd('loginPass',this)" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--muted);font-size:16px;user-select:none">👁</span>
+</div>
       </div>
       <button class="btn" onclick="doLogin()">Sign In →</button>
       <div class="error" id="loginErr"></div>
@@ -95,7 +98,10 @@
     <div class="panel" id="panel-invite">
       <div class="field">
         <label>Your Password (verify)</label>
-        <input type="password" id="inviteAuth" placeholder="your current password"/>
+        <div style="position:relative">
+  <input type="password" id="loginPass" placeholder="••••••••" autocomplete="current-password" style="width:100%;padding-right:40px"/>
+  <span onclick="togglePwd('loginPass',this)" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--muted);font-size:16px;user-select:none">👁</span>
+</div>
       </div>
       <div class="field">
         <label>New Admin Username</label>
@@ -103,7 +109,10 @@
       </div>
       <div class="field">
         <label>New Admin Password</label>
-        <input type="password" id="invitePass" placeholder="min 8 characters"/>
+        <div style="position:relative">
+  <input type="password" id="loginPass" placeholder="••••••••" autocomplete="current-password" style="width:100%;padding-right:40px"/>
+  <span onclick="togglePwd('loginPass',this)" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--muted);font-size:16px;user-select:none">👁</span>
+</div>
       </div>
       <div class="field">
         <label>Role</label>
@@ -126,15 +135,24 @@
       </div>
       <div class="field">
         <label>Current Password (if known)</label>
-        <input type="password" id="forgotCurrent" placeholder="leave blank if forgotten"/>
+        <div style="position:relative">
+  <input type="password" id="loginPass" placeholder="••••••••" autocomplete="current-password" style="width:100%;padding-right:40px"/>
+  <span onclick="togglePwd('loginPass',this)" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--muted);font-size:16px;user-select:none">👁</span>
+</div>
       </div>
       <div class="field">
         <label>New Password</label>
-        <input type="password" id="forgotNew" placeholder="min 8 characters"/>
+        <div style="position:relative">
+  <input type="password" id="loginPass" placeholder="••••••••" autocomplete="current-password" style="width:100%;padding-right:40px"/>
+  <span onclick="togglePwd('loginPass',this)" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--muted);font-size:16px;user-select:none">👁</span>
+</div>
       </div>
       <div class="field">
         <label>Confirm New Password</label>
-        <input type="password" id="forgotConfirm" placeholder="repeat new password"/>
+        <div style="position:relative">
+  <input type="password" id="loginPass" placeholder="••••••••" autocomplete="current-password" style="width:100%;padding-right:40px"/>
+  <span onclick="togglePwd('loginPass',this)" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--muted);font-size:16px;user-select:none">👁</span>
+</div>
       </div>
       <button class="btn" onclick="doReset()">Reset Password</button>
       <div class="error" id="forgotErr"></div>
