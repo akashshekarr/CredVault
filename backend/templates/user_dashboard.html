@@ -68,8 +68,7 @@
 
     /* APP BLOCK */
     .app-block{background:linear-gradient(180deg,rgba(16,20,31,0.95),rgba(11,14,23,0.95));border:1px solid var(--border-soft);border-radius:var(--radius);padding:24px 20px;display:flex;flex-direction:column;align-items:center;text-align:center;transition:all 0.25s ease;cursor:default;position:relative;overflow:hidden}
-    .app-block::before{content:'';position:absolute;inset:0;background:radial-gradient(200px 150px at 50% 0%,rgba(88,230,217,0.05),transparent);opacity:0;transition:opacity 0.3s;pointer-events:none}
-    .app-block-btn{width:100%;padding:9px;border-radius:10px;font-size:12px;font-weight:600;font-family:'Space Grotesk',sans-serif;cursor:pointer;transition:all 0.18s;border:none;margin-top:auto;position:relative;z-index:10}
+    .app-block::before{content:'';position:absolute;inset:0;background:radial-gradient(200px 150px at 50% 0%,rgba(88,230,217,0.05),transparent);opacity:0;transition:opacity 0.3s}
     .app-block:hover{border-color:rgba(88,230,217,0.35);transform:translateY(-4px);box-shadow:0 16px 40px -12px rgba(0,0,0,0.6),0 0 0 1px rgba(88,230,217,0.1)}
     .app-block:hover::before{opacity:1}
     .app-block.has-access{border-color:rgba(79,227,155,0.25);background:linear-gradient(180deg,rgba(79,227,155,0.04),rgba(11,14,23,0.95))}
@@ -324,10 +323,10 @@
         : `<div style="height:22px;margin-bottom:12px"></div>`;
       const appIdx = allApps.findIndex(a => a.name === app.name);
       let btn = hasAccess
-        ? `<button class="app-block-btn btn-acc" onclick="event.stopPropagation();openCredModal(${appIdx})">🔓 View Credentials</button>`
+        ? `<button class="app-block-btn btn-acc" onclick="openCredModal(${appIdx})">🔓 View Credentials</button>`
         : isPending
         ? `<button class="app-block-btn btn-pend">Request Pending...</button>`
-        : `<button class="app-block-btn btn-req" onclick="event.stopPropagation();openReqModal(${appIdx})">+ Request Access</button>`;
+        : `<button class="app-block-btn btn-req" onclick="openReqModal(${appIdx})">+ Request Access</button>`;
       const domain = (() => { try { return new URL(app.url||'http://x').hostname.replace('www.',''); } catch(e) { return app.url||''; } })();
       return `<div class="${cardClass}">
         <div class="app-logo-wrap" style="background:${bg}">${inner}</div>
@@ -359,7 +358,7 @@
         ? `<div class="app-block-badge badge-individual">Individual ID</div>`
         : `<div class="app-block-badge badge-access">✓ Credentials</div>`;
       const appIdx = allApps.findIndex(a => a.name === app.name);
-      const btn = `<button class="app-block-btn btn-acc" onclick="event.stopPropagation();openCredModal(${appIdx})">🔓 View Credentials</button>`;
+      const btn = `<button class="app-block-btn btn-acc" onclick="openCredModal(${appIdx})">🔓 View Credentials</button>`;
       const domain = (() => { try { return new URL(app.url||'http://x').hostname.replace('www.',''); } catch(e) { return app.url||''; } })();
       return `<div class="app-block has-access">
         <div class="app-logo-wrap" style="background:${bg}">${inner}</div>
@@ -428,38 +427,77 @@
   }
 
   // CREDENTIALS MODAL
-  function openCredModal(appIdx) {
+  async function openCredModal(appIdx) {
     const app = allApps[appIdx] || {};
     const appName = app.name || '';
     const appUrl = app.url || '';
     const grant = myGrants.find(g => g.app_name === appName);
     document.getElementById('mTitle').textContent = appName;
     setModalLogo(appName, appUrl);
+    openModal();
 
     if (grant && grant.access_type === 'Individual ID') {
       document.getElementById('mBody').innerHTML = `
         <div class="note-box">You have <strong style="color:var(--violet)">Individual ID</strong> access.<br>Sign in using your <strong style="color:var(--cyan)">5C Network Google account</strong>.</div>
         <a href="${appUrl}" target="_blank" class="open-btn">🚀 Open ${appName}</a>`;
       document.getElementById('mFoot').innerHTML = `<button class="mbtn" onclick="closeModal()">Close</button>`;
-    } else {
-      document.getElementById('mBody').innerHTML = `
-        <div class="note-box">Enter the <strong style="color:var(--cyan)">pre-shared key</strong> from your approval email.<br>The key expires in 24 hours and can only be used once.</div>
-        <div class="psk-wrap">
-          <input class="psk-input" type="password" id="pskInp" placeholder="Enter pre-shared key..." autocomplete="off"/>
-          <button class="psk-eye" onclick="togglePskEye()">👁</button>
-        </div>
-        <div class="psk-hint">💡 Check your inbox for the approval email from IT Support.</div>
-        <div class="err-msg" id="pskErr"></div>`;
-      document.getElementById('mFoot').innerHTML = `
-        <button class="mbtn" onclick="closeModal()">Cancel</button>
-        <button class="mbtn mbtn-primary" id="unlockBtn">Unlock →</button>`;
-      setTimeout(() => {
-        document.getElementById('pskInp')?.focus();
-        document.getElementById('unlockBtn').addEventListener('click', () => submitPsk(appName, appUrl));
-        document.getElementById('pskInp').addEventListener('keydown', e => { if(e.key==='Enter') submitPsk(appName, appUrl); });
-      }, 50);
+      return;
     }
-    openModal();
+
+    // Show loading
+    document.getElementById('mBody').innerHTML = `<div style="text-align:center;padding:30px;font-size:12px;font-family:'JetBrains Mono',monospace;color:var(--cyan)">Checking credentials...</div>`;
+    document.getElementById('mFoot').innerHTML = '';
+
+    // Check if saved credentials exist
+    try {
+      const saved = await apiFetch('/user/saved-credentials/' + encodeURIComponent(appName));
+      if (saved.found) {
+        showCredentials(saved.credentials, appName, appUrl);
+        return;
+      }
+    } catch(e) {}
+
+    // No saved credentials — ask for PSK
+    document.getElementById('mBody').innerHTML = `
+      <div class="note-box">Enter the <strong style="color:var(--cyan)">pre-shared key</strong> from your approval email.<br>After entering once, you won't need it again.</div>
+      <div class="psk-wrap">
+        <input class="psk-input" type="password" id="pskInp" placeholder="Enter pre-shared key..." autocomplete="off"/>
+        <button class="psk-eye" onclick="togglePskEye()">👁</button>
+      </div>
+      <div class="psk-hint">💡 Check your inbox for the approval email from IT Support.</div>
+      <div class="err-msg" id="pskErr"></div>`;
+    document.getElementById('mFoot').innerHTML = `
+      <button class="mbtn" onclick="closeModal()">Cancel</button>
+      <button class="mbtn mbtn-primary" id="unlockBtn">Unlock →</button>`;
+    setTimeout(() => {
+      document.getElementById('pskInp')?.focus();
+      document.getElementById('unlockBtn').addEventListener('click', () => submitPsk(appName, appUrl));
+      document.getElementById('pskInp').addEventListener('keydown', e => { if(e.key==='Enter') submitPsk(appName, appUrl); });
+    }, 50);
+  }
+
+  function showCredentials(c, appName, appUrl) {
+    passShown = false;
+    document.getElementById('mBody').innerHTML = `
+      <div class="cred-row">
+        <div class="cred-label">Username / Email</div>
+        <div class="cred-val">
+          <span id="credUser">${c.username}</span>
+          <button class="cred-btn" onclick="copyToClip('${c.username.replace(/'/g,"\'")}', this)" title="Copy">📋</button>
+        </div>
+      </div>
+      <div class="cred-row">
+        <div class="cred-label">Password</div>
+        <div class="cred-val">
+          <span id="passSpan">••••••••••</span>
+          <div style="display:flex;gap:6px">
+            <button class="cred-btn" onclick="togglePassShow('${c.password.replace(/'/g,"\'")}')">👁</button>
+            <button class="cred-btn" onclick="copyToClip('${c.password.replace(/'/g,"\'")}', this)" title="Copy">📋</button>
+          </div>
+        </div>
+      </div>
+      <a href="${c.app_url || appUrl}" target="_blank" class="open-btn">🚀 Open ${appName}</a>`;
+    document.getElementById('mFoot').innerHTML = `<button class="mbtn" onclick="closeModal()">Close</button>`;
   }
 
   function togglePskEye() {
