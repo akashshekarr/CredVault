@@ -331,10 +331,7 @@
           <td>${g.app_name}</td>
           <td><span class="badge ${g.access_type==='Credentials'?'badge-cred':'badge-id'}">${g.access_type}</span></td>
           <td>${fmtDate(g.granted_at)}</td>
-          <td style="display:flex;gap:6px">
-  <button class="btn btn-danger btn-sm" onclick="deleteGrant(${g.id})" title="Delete record">✕</button>
-  ${g.user_email ? `<button class="btn btn-sm" style="color:#FFB547;border-color:rgba(255,181,71,0.3);background:rgba(255,181,71,0.08)" onclick="revokeAccess('${g.user_email}','${g.app_name}')" title="Revoke credentials">🔒 Revoke</button>` : ''}
-</td>
+          <td><button class="btn btn-danger btn-sm" onclick="deleteGrant(${g.id})">✕</button></td>
         </tr>`).join('')}
       </tbody></table>`;
   }
@@ -370,10 +367,7 @@
           <td>${g.granted_by||'—'}</td>
           <td>${fmtDate(g.granted_at)}</td>
           <td style="color:var(--muted);max-width:150px;overflow:hidden;text-overflow:ellipsis">${g.notes||'—'}</td>
-          <td style="display:flex;gap:6px">
-  <button class="btn btn-danger btn-sm" onclick="deleteGrant(${g.id})" title="Delete record">✕</button>
-  ${g.user_email ? `<button class="btn btn-sm" style="color:#FFB547;border-color:rgba(255,181,71,0.3);background:rgba(255,181,71,0.08)" onclick="revokeAccess('${g.user_email}','${g.app_name}')" title="Revoke credentials">🔒 Revoke</button>` : ''}
-</td>
+          <td><button class="btn btn-danger btn-sm" onclick="deleteGrant(${g.id})">✕</button></td>
         </tr>`).join('')}
       </tbody></table>`;
   }
@@ -408,11 +402,12 @@
         </div>
         <div class="card">
           <table>
-            <thead><tr><th>Application</th><th>Access Type</th><th>Granted By</th><th>Date</th><th>Notes</th></tr></thead>
+            <thead><tr><th>Application</th><th>Access Type</th><th>Status</th><th>Granted By</th><th>Date</th><th>Notes</th></tr></thead>
             <tbody>${data.map(d=>`
               <tr>
                 <td><span style="color:var(--cyan);font-weight:600">${d.app_name}</span></td>
                 <td><span class="badge ${d.access_type==='Credentials'?'badge-cred':'badge-id'}">${d.access_type}</span></td>
+                <td><span style="font-size:10px;padding:3px 8px;border-radius:999px;${d.status==='revoked'?'background:rgba(255,92,122,0.12);color:#FFB1C0;border:1px solid rgba(255,92,122,0.3)':'background:rgba(79,227,155,0.12);color:#8FF1BC;border:1px solid rgba(79,227,155,0.3)'}">${d.status||'active'}</span></td>
                 <td>${d.granted_by||'—'}</td>
                 <td>${fmtDate(d.granted_at)}</td>
                 <td style="color:var(--muted)">${d.notes||'—'}</td>
@@ -422,22 +417,6 @@
         </div>`;
     } catch(e) { el.innerHTML = '<div class="card"><div class="empty">error loading report</div></div>'; }
   }
-
-  async function revokeAccess(userEmail, appName) {
-  if (!confirm(`Revoke ${appName} credentials for ${userEmail}?\n\nThe user will need a new PSK to access credentials again.`)) return;
-  try {
-    const r = await post('/admin/revoke-credentials', { user_email: userEmail, app_name: appName });
-    if (r.success) {
-      alert(`✓ Credentials revoked for ${userEmail}`);
-      await loadData();
-      filterRecords();
-    } else {
-      alert('Error: ' + (r.error || 'Failed to revoke'));
-    }
-  } catch(e) {
-    alert('Error: ' + e.message);
-  }
-}
 
   async function runAppReport() {
     const q = document.getElementById('reportAppSearch').value.trim();
@@ -461,13 +440,14 @@
         </div>
         <div class="card">
           <table>
-            <thead><tr><th>Employee</th><th>Designation</th><th>Department</th><th>Access Type</th><th>Date</th></tr></thead>
+            <thead><tr><th>Employee</th><th>Designation</th><th>Department</th><th>Access Type</th><th>Status</th><th>Date</th></tr></thead>
             <tbody>${data.map(d=>`
               <tr>
                 <td style="color:var(--text);font-weight:600">${d.user_name}</td>
                 <td>${d.user_designation||'—'}</td>
                 <td>${d.user_department||'—'}</td>
                 <td><span class="badge ${d.access_type==='Credentials'?'badge-cred':'badge-id'}">${d.access_type}</span></td>
+                <td><span style="font-size:10px;padding:3px 8px;border-radius:999px;${d.status==='revoked'?'background:rgba(255,92,122,0.12);color:#FFB1C0;border:1px solid rgba(255,92,122,0.3)':'background:rgba(79,227,155,0.12);color:#8FF1BC;border:1px solid rgba(79,227,155,0.3)'}">${d.status||'active'}</span></td>
                 <td>${fmtDate(d.granted_at)}</td>
               </tr>`).join('')}
             </tbody>

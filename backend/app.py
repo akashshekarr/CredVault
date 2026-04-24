@@ -114,9 +114,14 @@ def init_db():
             access_type TEXT NOT NULL,
             granted_by TEXT,
             granted_at TIMESTAMPTZ DEFAULT NOW(),
-            notes TEXT
+            notes TEXT,
+            status TEXT DEFAULT 'active'
         )
     """)
+    try:
+        conn.run("ALTER TABLE access_grants ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active'")
+    except:
+        pass
     conn.run("""
         CREATE TABLE IF NOT EXISTS user_credentials (
             id SERIAL PRIMARY KEY,
@@ -553,13 +558,14 @@ def add_user():
 @login_required
 def get_access_grants():
     conn = get_db()
-    rows = conn.run("SELECT id, user_name, user_email, user_designation, user_department, app_name, access_type, granted_by, granted_at, notes FROM access_grants ORDER BY granted_at DESC")
+    rows = conn.run("SELECT id, user_name, user_email, user_designation, user_department, app_name, access_type, granted_by, granted_at, notes, status FROM access_grants WHERE status='active' ORDER BY granted_at DESC")
     conn.close()
     return jsonify([{
         "id": r[0], "user_name": r[1], "user_email": r[2],
         "user_designation": r[3], "user_department": r[4],
         "app_name": r[5], "access_type": r[6], "granted_by": r[7],
-        "granted_at": r[8].isoformat() if r[8] else None, "notes": r[9]
+        "granted_at": r[8].isoformat() if r[8] else None, "notes": r[9],
+        "status": r[10]
     } for r in rows])
 
 
@@ -594,7 +600,7 @@ def delete_access_grant(grant_id):
 def user_report(user_name):
     conn = get_db()
     rows = conn.run("""SELECT ag.app_name, ag.access_type, ag.granted_at, ag.granted_by, ag.notes,
-                       ag.user_designation, ag.user_department, ag.user_email
+                       ag.user_designation, ag.user_department, ag.user_email, ag.status
                        FROM access_grants ag
                        WHERE LOWER(ag.user_name) LIKE LOWER(:q)
                        ORDER BY ag.granted_at DESC""",
@@ -604,7 +610,8 @@ def user_report(user_name):
         "app_name": r[0], "access_type": r[1],
         "granted_at": r[2].isoformat() if r[2] else None,
         "granted_by": r[3], "notes": r[4],
-        "user_designation": r[5], "user_department": r[6], "user_email": r[7]
+        "user_designation": r[5], "user_department": r[6], "user_email": r[7],
+        "status": r[8]
     } for r in rows])
 
 
@@ -613,7 +620,7 @@ def user_report(user_name):
 def app_report(app_name):
     conn = get_db()
     rows = conn.run("""SELECT ag.user_name, ag.user_email, ag.access_type, ag.granted_at,
-                       ag.user_designation, ag.user_department
+                       ag.user_designation, ag.user_department, ag.status
                        FROM access_grants ag
                        WHERE LOWER(ag.app_name) LIKE LOWER(:q)
                        ORDER BY ag.granted_at DESC""",
@@ -622,7 +629,8 @@ def app_report(app_name):
     return jsonify([{
         "user_name": r[0], "user_email": r[1], "access_type": r[2],
         "granted_at": r[3].isoformat() if r[3] else None,
-        "user_designation": r[4], "user_department": r[5]
+        "user_designation": r[4], "user_department": r[5],
+        "status": r[6]
     } for r in rows])
 
 
@@ -700,11 +708,19 @@ def revoke_credentials():
     data = request.json
     user_email = data.get("user_email", "")
     app_name = data.get("app_name", "")
+    grant_id = data.get("grant_id")
     if not user_email or not app_name:
         return jsonify({"error": "user_email and app_name required"}), 400
     conn = get_db()
+    # Revoke saved credentials
     conn.run("UPDATE user_credentials SET revoked=true WHERE user_email=:e AND app_name=:a",
              e=user_email, a=app_name)
+    # Mark grant as revoked (keep for reports)
+    if grant_id:
+        conn.run("UPDATE access_grants SET status='revoked' WHERE id=:id", id=grant_id)
+    else:
+        conn.run("UPDATE access_grants SET status='revoked' WHERE user_email=:e AND app_name=:a AND status='active'",
+                 e=user_email, a=app_name)
     conn.run("INSERT INTO audit_logs (user_email, app_name, action) VALUES (:e, :a, 'credentials_revoked')",
              e=user_email, a=app_name)
     conn.close()
