@@ -372,10 +372,14 @@
 
   // MODAL
   function openModal() {
+    function openModal() {
     const o = document.getElementById('modalOverlay');
-    o.style.cssText = 'display:flex;align-items:center;justify-content:center;position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(3,5,10,0.88);z-index:99999';
+    // Remove from current parent and append directly to body to escape stacking context
+    document.body.appendChild(o);
+    o.style.cssText = 'display:flex;align-items:center;justify-content:center;position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(3,5,10,0.88);z-index:99999;';
   }
-  function closeModal() { document.getElementById('modalOverlay').style.display = 'none'; }
+  }
+  function closeModal() { document.getElementById('modalOverlay').style.cssText = 'display:none'; }
   document.getElementById('mClose').addEventListener('click', closeModal);
   document.getElementById('modalOverlay').addEventListener('click', e => { if(e.target.id==='modalOverlay') closeModal(); });
 
