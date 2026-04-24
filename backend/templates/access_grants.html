@@ -331,7 +331,10 @@
           <td>${g.app_name}</td>
           <td><span class="badge ${g.access_type==='Credentials'?'badge-cred':'badge-id'}">${g.access_type}</span></td>
           <td>${fmtDate(g.granted_at)}</td>
-          <td><button class="btn btn-danger btn-sm" onclick="deleteGrant(${g.id})">✕</button></td>
+          <td style="display:flex;gap:4px">
+            ${g.user_email ? `<button class="btn btn-sm" style="color:#FFB547;border-color:rgba(255,181,71,0.3);background:rgba(255,181,71,0.08);white-space:nowrap" onclick="revokeAccess('${g.user_email}','${g.app_name}',${g.id})">🔒 Revoke</button>` : ''}
+            <button class="btn btn-danger btn-sm" onclick="deleteGrant(${g.id})" title="Delete">✕</button>
+          </td>
         </tr>`).join('')}
       </tbody></table>`;
   }
@@ -367,7 +370,9 @@
           <td>${g.granted_by||'—'}</td>
           <td>${fmtDate(g.granted_at)}</td>
           <td style="color:var(--muted);max-width:150px;overflow:hidden;text-overflow:ellipsis">${g.notes||'—'}</td>
-          <td><button class="btn btn-danger btn-sm" onclick="deleteGrant(${g.id})">✕</button></td>
+          <td>
+            <button class="btn btn-danger btn-sm" onclick="deleteGrant(${g.id})" title="Delete">✕</button>
+          </td>
         </tr>`).join('')}
       </tbody></table>`;
   }
@@ -379,9 +384,28 @@
     filterRecords();
   }
 
+  async function revokeAccess(userEmail, appName, grantId) {
+    if (!confirm(`Revoke ${appName} access for ${userEmail}?\n\nRecord will be kept in Reports as revoked.`)) return;
+    try {
+      const r = await post('/admin/revoke-credentials', { user_email: userEmail, app_name: appName, grant_id: grantId });
+      if (r.success) {
+        await loadData();
+        filterRecords();
+      } else {
+        alert('Error: ' + (r.error || 'Failed to revoke'));
+      }
+    } catch(e) {
+      alert('Error: ' + e.message);
+    }
+  }
+
+  // Track the last user query so revokeAccess can refresh the report
+  let lastReportUser = null;
+
   async function runUserReport() {
     const q = document.getElementById('reportUserSearch').value.trim();
     if (!q) return;
+    lastReportUser = q;
     const el = document.getElementById('reportResults');
     el.innerHTML = '<div class="loading">searching...</div>';
     try {
@@ -390,6 +414,11 @@
       const user = data[0];
       const credCount = data.filter(d=>d.access_type==='Credentials').length;
       const idCount = data.filter(d=>d.access_type==='Individual ID').length;
+      const activeCount = data.filter(d=>d.status!=='revoked').length;
+      const userEmail = user.user_email || '';
+      const revokeAllBtn = (userEmail && activeCount > 0)
+        ? `<button class="btn btn-sm" style="color:#FFB547;border-color:rgba(255,181,71,0.4);background:rgba(255,181,71,0.1);white-space:nowrap;margin-top:10px" onclick="revokeAllForUser('${userEmail.replace(/'/g,"\\'")}','${q.replace(/'/g,"\\'")}')">🔒 Revoke All Active (${activeCount})</button>`
+        : '';
       el.innerHTML = `
         <div class="report-user-card">
           <div class="report-user-name">${q}</div>
@@ -399,23 +428,67 @@
             <div class="stat-pill">Credentials: <span>${credCount}</span></div>
             <div class="stat-pill">Individual ID: <span>${idCount}</span></div>
           </div>
+          ${revokeAllBtn}
         </div>
         <div class="card">
           <table>
-            <thead><tr><th>Application</th><th>Access Type</th><th>Status</th><th>Granted By</th><th>Date</th><th>Notes</th></tr></thead>
-            <tbody>${data.map(d=>`
+            <thead><tr><th>Application</th><th>Access Type</th><th>Status</th><th>Granted By</th><th>Date</th><th>Notes</th><th></th></tr></thead>
+            <tbody>${data.map(d=>{
+              const isRevoked = d.status === 'revoked';
+              const canRevoke = !isRevoked && d.user_email;
+              const safeEmail = (d.user_email||'').replace(/'/g,"\\'");
+              const safeApp = (d.app_name||'').replace(/'/g,"\\'");
+              const actionCell = canRevoke
+                ? `<button class="btn btn-sm" style="color:#FFB547;border-color:rgba(255,181,71,0.3);background:rgba(255,181,71,0.08);white-space:nowrap" onclick="revokeFromReport('${safeEmail}','${safeApp}')">🔒 Revoke</button>`
+                : `<span style="color:var(--muted);font-size:11px">—</span>`;
+              return `
               <tr>
                 <td><span style="color:var(--cyan);font-weight:600">${d.app_name}</span></td>
                 <td><span class="badge ${d.access_type==='Credentials'?'badge-cred':'badge-id'}">${d.access_type}</span></td>
-                <td><span style="font-size:10px;padding:3px 8px;border-radius:999px;${d.status==='revoked'?'background:rgba(255,92,122,0.12);color:#FFB1C0;border:1px solid rgba(255,92,122,0.3)':'background:rgba(79,227,155,0.12);color:#8FF1BC;border:1px solid rgba(79,227,155,0.3)'}">${d.status||'active'}</span></td>
+                <td><span style="font-size:10px;padding:3px 8px;border-radius:999px;${isRevoked?'background:rgba(255,92,122,0.12);color:#FFB1C0;border:1px solid rgba(255,92,122,0.3)':'background:rgba(79,227,155,0.12);color:#8FF1BC;border:1px solid rgba(79,227,155,0.3)'}">${d.status||'active'}</span></td>
                 <td>${d.granted_by||'—'}</td>
                 <td>${fmtDate(d.granted_at)}</td>
                 <td style="color:var(--muted)">${d.notes||'—'}</td>
-              </tr>`).join('')}
+                <td>${actionCell}</td>
+              </tr>`;}).join('')}
             </tbody>
           </table>
         </div>`;
     } catch(e) { el.innerHTML = '<div class="card"><div class="empty">error loading report</div></div>'; }
+  }
+
+  // Revoke a single app for a user from the report view, then refresh the report
+  async function revokeFromReport(userEmail, appName) {
+    if (!confirm(`Revoke ${appName} access for ${userEmail}?`)) return;
+    try {
+      const r = await post('/admin/revoke-credentials', { user_email: userEmail, app_name: appName });
+      if (r.success) {
+        await loadData();
+        if (lastReportUser) await runUserReport();
+      } else {
+        alert('Error: ' + (r.error || 'Failed to revoke'));
+      }
+    } catch(e) { alert('Error: ' + e.message); }
+  }
+
+  // Bulk-revoke every active grant for a user, then refresh the report
+  async function revokeAllForUser(userEmail, displayName) {
+    if (!confirm(`Revoke ALL active access for ${displayName}?\n\nThis will revoke every app where they currently have credentials.\nIndividual ID grants are also revoked.`)) return;
+    try {
+      const data = await get('/admin/reports/user/' + encodeURIComponent(displayName));
+      const active = data.filter(d => d.status !== 'revoked' && d.user_email);
+      if (!active.length) { alert('No active grants to revoke.'); return; }
+      let okCount = 0, failCount = 0;
+      for (const d of active) {
+        try {
+          const r = await post('/admin/revoke-credentials', { user_email: d.user_email, app_name: d.app_name });
+          if (r.success) okCount++; else failCount++;
+        } catch { failCount++; }
+      }
+      await loadData();
+      if (lastReportUser) await runUserReport();
+      alert(`Revoked ${okCount} grant(s).` + (failCount ? ` ${failCount} failed.` : ''));
+    } catch(e) { alert('Error: ' + e.message); }
   }
 
   async function runAppReport() {

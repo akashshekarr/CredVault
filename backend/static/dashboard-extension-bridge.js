@@ -41,16 +41,24 @@
   }
 
   // ── Public API used by the dashboard's "Open" button ────────────────────────
+  function normalizeUrl(u) {
+    if (!u) return '';
+    u = String(u).trim();
+    if (!/^https?:\/\//i.test(u)) u = 'https://' + u.replace(/^\/+/, '');
+    return u;
+  }
+
   async function openWithExtension(appName, appUrl) {
+    const url = normalizeUrl(appUrl);
     const status = await sendToExtension({ action: 'status' });
     if (!status?.ok || !status.paired) {
       // Fall back: open in a new tab without autofill
-      window.open(appUrl, '_blank', 'noopener');
+      window.open(url, '_blank', 'noopener');
       return { fellBack: true };
     }
-    const r = await sendToExtension({ action: 'open', app_name: appName, app_url: appUrl });
+    const r = await sendToExtension({ action: 'open', app_name: appName, app_url: url });
     if (!r?.ok) {
-      window.open(appUrl, '_blank', 'noopener');
+      window.open(url, '_blank', 'noopener');
       return { fellBack: true, error: r?.error };
     }
     return { fellBack: false };
