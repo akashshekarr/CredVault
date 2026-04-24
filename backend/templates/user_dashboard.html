@@ -68,7 +68,8 @@
 
     /* APP BLOCK */
     .app-block{background:linear-gradient(180deg,rgba(16,20,31,0.95),rgba(11,14,23,0.95));border:1px solid var(--border-soft);border-radius:var(--radius);padding:24px 20px;display:flex;flex-direction:column;align-items:center;text-align:center;transition:all 0.25s ease;cursor:default;position:relative;overflow:hidden}
-    .app-block::before{content:'';position:absolute;inset:0;background:radial-gradient(200px 150px at 50% 0%,rgba(88,230,217,0.05),transparent);opacity:0;transition:opacity 0.3s}
+    .app-block::before{content:'';position:absolute;inset:0;background:radial-gradient(200px 150px at 50% 0%,rgba(88,230,217,0.05),transparent);opacity:0;transition:opacity 0.3s;pointer-events:none}
+    .app-block-btn{width:100%;padding:9px;border-radius:10px;font-size:12px;font-weight:600;font-family:'Space Grotesk',sans-serif;cursor:pointer;transition:all 0.18s;border:none;margin-top:auto;position:relative;z-index:10}
     .app-block:hover{border-color:rgba(88,230,217,0.35);transform:translateY(-4px);box-shadow:0 16px 40px -12px rgba(0,0,0,0.6),0 0 0 1px rgba(88,230,217,0.1)}
     .app-block:hover::before{opacity:1}
     .app-block.has-access{border-color:rgba(79,227,155,0.25);background:linear-gradient(180deg,rgba(79,227,155,0.04),rgba(11,14,23,0.95))}
