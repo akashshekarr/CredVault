@@ -356,7 +356,8 @@
       const badge = isIndividual
         ? `<div class="app-block-badge badge-individual">Individual ID</div>`
         : `<div class="app-block-badge badge-access">✓ Credentials</div>`;
-      const btn = `<button class="app-block-btn btn-acc" data-app="${app.name}" data-url="${app.url||''}" onclick="handleCredClick(this)">🔓 View Credentials</button>`;
+      const appIdx = allApps.findIndex(a => a.name === app.name);
+      const btn = `<button class="app-block-btn btn-acc" onclick="openCredModal(${appIdx})">🔓 View Credentials</button>`;
       const domain = (() => { try { return new URL(app.url||'http://x').hostname.replace('www.',''); } catch(e) { return app.url||''; } })();
       return `<div class="app-block has-access">
         <div class="app-logo-wrap" style="background:${bg}">${inner}</div>
@@ -366,17 +367,6 @@
         ${btn}
       </div>`;
     }).join('');
-  }
-
-  // HANDLERS using data attributes (avoids special char issues in onclick)
-  function handleCredClick(btn) {
-    const appName = btn.getAttribute('data-app');
-    const appUrl = btn.getAttribute('data-url');
-    openCredModal(appName, appUrl);
-  }
-  function handleReqClick(btn) {
-    const appName = btn.getAttribute('data-app');
-    openReqModal(appName);
   }
 
   // MODAL
@@ -396,8 +386,9 @@
   }
 
   // REQUEST MODAL
-  function openReqModal(appName) {
-    const app = allApps.find(a => a.name === appName) || {};
+  function openReqModal(appIdx) {
+    const app = allApps[appIdx] || {};
+    const appName = app.name || '';
     document.getElementById('mTitle').textContent = appName;
     setModalLogo(appName, app.url || '');
     document.getElementById('mBody').innerHTML = `
@@ -416,6 +407,8 @@
     }, 50);
   }
 
+
+
   async function submitReq(appName) {
     const reason = document.getElementById('reqReason').value.trim();
     const errEl = document.getElementById('reqErr');
@@ -433,12 +426,15 @@
   }
 
   // CREDENTIALS MODAL
-  function openCredModal(appName, appUrl) {
+  function openCredModal(appIdx) {
+    const app = allApps[appIdx] || {};
+    const appName = app.name || '';
+    const appUrl = app.url || '';
     const grant = myGrants.find(g => g.app_name === appName);
     document.getElementById('mTitle').textContent = appName;
     setModalLogo(appName, appUrl);
 
-    if (grant?.access_type === 'Individual ID') {
+    if (grant && grant.access_type === 'Individual ID') {
       document.getElementById('mBody').innerHTML = `
         <div class="note-box">You have <strong style="color:var(--violet)">Individual ID</strong> access.<br>Sign in using your <strong style="color:var(--cyan)">5C Network Google account</strong>.</div>
         <a href="${appUrl}" target="_blank" class="open-btn">🚀 Open ${appName}</a>`;
@@ -454,9 +450,12 @@
         <div class="err-msg" id="pskErr"></div>`;
       document.getElementById('mFoot').innerHTML = `
         <button class="mbtn" onclick="closeModal()">Cancel</button>
-        <button class="mbtn mbtn-primary" id="unlockBtn" onclick="submitPsk('${appName}','${appUrl}')">Unlock →</button>`;
-      setTimeout(() => document.getElementById('pskInp')?.focus(), 100);
-      document.getElementById('pskInp').addEventListener('keydown', e => { if(e.key==='Enter') submitPsk(appName, appUrl); });
+        <button class="mbtn mbtn-primary" id="unlockBtn">Unlock →</button>`;
+      setTimeout(() => {
+        document.getElementById('pskInp')?.focus();
+        document.getElementById('unlockBtn').addEventListener('click', () => submitPsk(appName, appUrl));
+        document.getElementById('pskInp').addEventListener('keydown', e => { if(e.key==='Enter') submitPsk(appName, appUrl); });
+      }, 50);
     }
     openModal();
   }
