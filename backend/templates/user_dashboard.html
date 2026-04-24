@@ -337,16 +337,25 @@
           </div>
         </div>
       </div>
-      <a href="${creds.app_url||appUrl}" target="_blank" class="open-btn">🚀 Open ${appName}</a>`;
+      <button class="open-btn" id="openAppBtn">🚀 Open ${appName}</button>`;
     document.getElementById('mFoot').innerHTML = `<button onclick="closeModal()" style="font-family:'Space Grotesk',sans-serif;font-size:12px;font-weight:600;padding:9px 18px;border-radius:10px;cursor:pointer;border:1px solid #232b40;background:#161b29;color:#e7ecf5;">Close</button>`;
 
     const pw = creds.password || '';
     const uname = creds.username || '';
+    const targetUrl = creds.app_url || appUrl;
     document.getElementById('copyUserBtn').onclick = function() { copyToClip(uname, this); };
     document.getElementById('copyPassBtn').onclick = function() { copyToClip(pw, this); };
     document.getElementById('togglePassBtn').onclick = function() {
       passShown = !passShown;
       document.getElementById('passSpan').textContent = passShown ? pw : '••••••••••';
+    };
+    document.getElementById('openAppBtn').onclick = async function() {
+      if (window.AppVaultBridge && window.AppVaultBridge.isAvailable()) {
+        await window.AppVaultBridge.openWithExtension(appName, targetUrl);
+      } else {
+        window.open(targetUrl, '_blank', 'noopener');
+      }
+      closeModal();
     };
   }
 
@@ -454,5 +463,6 @@
 
   loadDashboard();
 </script>
+<script src="{{ url_for('static', filename='dashboard-extension-bridge.js') }}"></script>
 </body>
 </html>
