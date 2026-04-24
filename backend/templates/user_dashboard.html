@@ -11,8 +11,8 @@
     html,body{height:100%}
     body{font-family:'Space Grotesk',sans-serif;color:var(--text);background:var(--bg);min-height:100vh;-webkit-font-smoothing:antialiased;overflow-x:hidden}
     .aurora{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
-    .aurora::before{content:'';position:absolute;width:700px;height:700px;background:radial-gradient(circle,var(--cyan),transparent 70%);top:-200px;left:-150px;filter:blur(80px);opacity:0.3;animation:drift1 22s ease-in-out infinite alternate}
-    .aurora::after{content:'';position:absolute;width:800px;height:800px;background:radial-gradient(circle,var(--violet),transparent 70%);bottom:-250px;right:-200px;filter:blur(80px);opacity:0.3;animation:drift2 26s ease-in-out infinite alternate}
+    .aurora::before{content:'';position:absolute;width:700px;height:700px;background:radial-gradient(circle,rgba(88,230,217,0.3),transparent 70%);top:-200px;left:-150px;border-radius:50%;opacity:0.5;animation:drift1 22s ease-in-out infinite alternate}
+.aurora::after{content:'';position:absolute;width:800px;height:800px;background:radial-gradient(circle,rgba(155,123,255,0.3),transparent 70%);bottom:-250px;right:-200px;border-radius:50%;opacity:0.5;animation:drift2 26s ease-in-out infinite alternate}
     @keyframes drift1{0%{transform:translate(0,0)}100%{transform:translate(100px,70px)}}
     @keyframes drift2{0%{transform:translate(0,0)}100%{transform:translate(-80px,-50px)}}
     .grid-bg{position:fixed;inset:0;z-index:0;pointer-events:none;background-image:linear-gradient(rgba(88,230,217,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(88,230,217,0.03) 1px,transparent 1px);background-size:48px 48px}
