@@ -331,7 +331,10 @@
           <td>${g.app_name}</td>
           <td><span class="badge ${g.access_type==='Credentials'?'badge-cred':'badge-id'}">${g.access_type}</span></td>
           <td>${fmtDate(g.granted_at)}</td>
-          <td><button class="btn btn-danger btn-sm" onclick="deleteGrant(${g.id})">✕</button></td>
+          <td style="display:flex;gap:6px">
+  <button class="btn btn-danger btn-sm" onclick="deleteGrant(${g.id})" title="Delete record">✕</button>
+  ${g.user_email ? `<button class="btn btn-sm" style="color:#FFB547;border-color:rgba(255,181,71,0.3);background:rgba(255,181,71,0.08)" onclick="revokeAccess('${g.user_email}','${g.app_name}')" title="Revoke credentials">🔒 Revoke</button>` : ''}
+</td>
         </tr>`).join('')}
       </tbody></table>`;
   }
@@ -367,7 +370,10 @@
           <td>${g.granted_by||'—'}</td>
           <td>${fmtDate(g.granted_at)}</td>
           <td style="color:var(--muted);max-width:150px;overflow:hidden;text-overflow:ellipsis">${g.notes||'—'}</td>
-          <td><button class="btn btn-danger btn-sm" onclick="deleteGrant(${g.id})">✕</button></td>
+          <td style="display:flex;gap:6px">
+  <button class="btn btn-danger btn-sm" onclick="deleteGrant(${g.id})" title="Delete record">✕</button>
+  ${g.user_email ? `<button class="btn btn-sm" style="color:#FFB547;border-color:rgba(255,181,71,0.3);background:rgba(255,181,71,0.08)" onclick="revokeAccess('${g.user_email}','${g.app_name}')" title="Revoke credentials">🔒 Revoke</button>` : ''}
+</td>
         </tr>`).join('')}
       </tbody></table>`;
   }
@@ -416,6 +422,22 @@
         </div>`;
     } catch(e) { el.innerHTML = '<div class="card"><div class="empty">error loading report</div></div>'; }
   }
+
+  async function revokeAccess(userEmail, appName) {
+  if (!confirm(`Revoke ${appName} credentials for ${userEmail}?\n\nThe user will need a new PSK to access credentials again.`)) return;
+  try {
+    const r = await post('/admin/revoke-credentials', { user_email: userEmail, app_name: appName });
+    if (r.success) {
+      alert(`✓ Credentials revoked for ${userEmail}`);
+      await loadData();
+      filterRecords();
+    } else {
+      alert('Error: ' + (r.error || 'Failed to revoke'));
+    }
+  } catch(e) {
+    alert('Error: ' + e.message);
+  }
+}
 
   async function runAppReport() {
     const q = document.getElementById('reportAppSearch').value.trim();
