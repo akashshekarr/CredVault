@@ -627,37 +627,6 @@ def app_report(app_name):
 
 
 
-@app.route("/user/saved-credentials/<app_name>", methods=["GET"])
-@user_login_required
-def get_saved_credentials(app_name):
-    user_email = session.get('user_email')
-    conn = get_db()
-    rows = conn.run("""SELECT username, password, app_url FROM user_credentials
-                       WHERE user_email=:e AND app_name=:a AND revoked=false""",
-                    e=user_email, a=app_name)
-    conn.close()
-    if not rows:
-        return jsonify({"found": False})
-    return jsonify({"found": True, "credentials": {"username": rows[0][0], "password": rows[0][1], "app_url": rows[0][2], "app_name": app_name}})
-
-
-@app.route("/admin/revoke-credentials", methods=["POST"])
-@login_required
-def revoke_credentials():
-    data = request.json
-    user_email = data.get("user_email", "")
-    app_name = data.get("app_name", "")
-    if not user_email or not app_name:
-        return jsonify({"error": "user_email and app_name required"}), 400
-    conn = get_db()
-    conn.run("UPDATE user_credentials SET revoked=true WHERE user_email=:e AND app_name=:a",
-             e=user_email, a=app_name)
-    conn.run("INSERT INTO audit_logs (user_email, app_name, action) VALUES (:e, :a, 'credentials_revoked')",
-             e=user_email, a=app_name)
-    conn.close()
-    return jsonify({"success": True})
-
-
 # ── USER AUTH ──
 
 @app.route("/user/login", methods=["GET"])
@@ -709,6 +678,37 @@ def user_login_required(f):
             return redirect('/user/login')
         return f(*args, **kwargs)
     return decorated
+
+
+@app.route("/user/saved-credentials/<app_name>", methods=["GET"])
+@user_login_required
+def get_saved_credentials(app_name):
+    user_email = session.get('user_email')
+    conn = get_db()
+    rows = conn.run("""SELECT username, password, app_url FROM user_credentials
+                       WHERE user_email=:e AND app_name=:a AND revoked=false""",
+                    e=user_email, a=app_name)
+    conn.close()
+    if not rows:
+        return jsonify({"found": False})
+    return jsonify({"found": True, "credentials": {"username": rows[0][0], "password": rows[0][1], "app_url": rows[0][2], "app_name": app_name}})
+
+
+@app.route("/admin/revoke-credentials", methods=["POST"])
+@login_required
+def revoke_credentials():
+    data = request.json
+    user_email = data.get("user_email", "")
+    app_name = data.get("app_name", "")
+    if not user_email or not app_name:
+        return jsonify({"error": "user_email and app_name required"}), 400
+    conn = get_db()
+    conn.run("UPDATE user_credentials SET revoked=true WHERE user_email=:e AND app_name=:a",
+             e=user_email, a=app_name)
+    conn.run("INSERT INTO audit_logs (user_email, app_name, action) VALUES (:e, :a, 'credentials_revoked')",
+             e=user_email, a=app_name)
+    conn.close()
+    return jsonify({"success": True})
 
 
 @app.route("/dashboard")
