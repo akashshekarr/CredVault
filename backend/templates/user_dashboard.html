@@ -323,10 +323,10 @@
         : `<div style="height:22px;margin-bottom:12px"></div>`;
       const appIdx = allApps.findIndex(a => a.name === app.name);
       let btn = hasAccess
-        ? `<button class="app-block-btn btn-acc" onclick="openCredModal(${appIdx})">🔓 View Credentials</button>`
+        ? `<button class="app-block-btn btn-acc" onclick="event.stopPropagation();openCredModal(${appIdx})">🔓 View Credentials</button>`
         : isPending
         ? `<button class="app-block-btn btn-pend">Request Pending...</button>`
-        : `<button class="app-block-btn btn-req" onclick="openReqModal(${appIdx})">+ Request Access</button>`;
+        : `<button class="app-block-btn btn-req" onclick="event.stopPropagation();openReqModal(${appIdx})">+ Request Access</button>`;
       const domain = (() => { try { return new URL(app.url||'http://x').hostname.replace('www.',''); } catch(e) { return app.url||''; } })();
       return `<div class="${cardClass}">
         <div class="app-logo-wrap" style="background:${bg}">${inner}</div>
@@ -358,7 +358,7 @@
         ? `<div class="app-block-badge badge-individual">Individual ID</div>`
         : `<div class="app-block-badge badge-access">✓ Credentials</div>`;
       const appIdx = allApps.findIndex(a => a.name === app.name);
-      const btn = `<button class="app-block-btn btn-acc" onclick="openCredModal(${appIdx})">🔓 View Credentials</button>`;
+      const btn = `<button class="app-block-btn btn-acc" onclick="event.stopPropagation();openCredModal(${appIdx})">🔓 View Credentials</button>`;
       const domain = (() => { try { return new URL(app.url||'http://x').hostname.replace('www.',''); } catch(e) { return app.url||''; } })();
       return `<div class="app-block has-access">
         <div class="app-logo-wrap" style="background:${bg}">${inner}</div>
