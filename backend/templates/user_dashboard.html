@@ -356,7 +356,7 @@
       const badge = isIndividual
         ? `<div class="app-block-badge badge-individual">Individual ID</div>`
         : `<div class="app-block-badge badge-access">✓ Credentials</div>`;
-      const btn = `<button class="app-block-btn btn-acc" onclick="openCredModal('${app.name}','${app.url||''}')">🔓 View Credentials</button>`;
+      const btn = `<button class="app-block-btn btn-acc" data-app="${app.name}" data-url="${app.url||''}" onclick="handleCredClick(this)">🔓 View Credentials</button>`;
       const domain = (() => { try { return new URL(app.url||'http://x').hostname.replace('www.',''); } catch(e) { return app.url||''; } })();
       return `<div class="app-block has-access">
         <div class="app-logo-wrap" style="background:${bg}">${inner}</div>
@@ -366,6 +366,17 @@
         ${btn}
       </div>`;
     }).join('');
+  }
+
+  // HANDLERS using data attributes (avoids special char issues in onclick)
+  function handleCredClick(btn) {
+    const appName = btn.getAttribute('data-app');
+    const appUrl = btn.getAttribute('data-url');
+    openCredModal(appName, appUrl);
+  }
+  function handleReqClick(btn) {
+    const appName = btn.getAttribute('data-app');
+    openReqModal(appName);
   }
 
   // MODAL
@@ -397,8 +408,12 @@
       <div class="ok-msg" id="reqOk"></div>`;
     document.getElementById('mFoot').innerHTML = `
       <button class="mbtn" onclick="closeModal()">Cancel</button>
-      <button class="mbtn mbtn-primary" onclick="submitReq('${appName}')">Send Request →</button>`;
+      <button class="mbtn mbtn-primary" id="submitReqBtn">Send Request →</button>`;
     openModal();
+    setTimeout(() => {
+      const btn = document.getElementById('submitReqBtn');
+      if (btn) btn.addEventListener('click', () => submitReq(appName));
+    }, 50);
   }
 
   async function submitReq(appName) {
