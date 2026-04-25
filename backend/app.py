@@ -691,15 +691,26 @@ def user_login_required(f):
 @app.route("/user/saved-credentials/<app_name>", methods=["GET"])
 @user_login_required
 def get_saved_credentials(app_name):
+    """Returns whether the user has unlocked this app and the username/app_url
+    for display. The password is intentionally NOT returned — the dashboard
+    only displays a masked placeholder. The browser extension fetches the
+    actual password via /api/extension/credentials/<app_name>."""
     user_email = session.get('user_email')
     conn = get_db()
-    rows = conn.run("""SELECT username, password, app_url FROM user_credentials
+    rows = conn.run("""SELECT username, app_url FROM user_credentials
                        WHERE user_email=:e AND app_name=:a AND revoked=false""",
                     e=user_email, a=app_name)
     conn.close()
     if not rows:
         return jsonify({"found": False})
-    return jsonify({"found": True, "credentials": {"username": rows[0][0], "password": rows[0][1], "app_url": rows[0][2], "app_name": app_name}})
+    return jsonify({
+        "found": True,
+        "credentials": {
+            "username": rows[0][0],
+            "app_url":  rows[0][1],
+            "app_name": app_name,
+        }
+    })
 
 
 @app.route("/admin/revoke-credentials", methods=["POST"])
@@ -873,12 +884,43 @@ def user_verify_psk():
         encrypted_creds = json.loads(encrypted_creds)
 
     decrypted = decrypt_credentials(encrypted_creds, psk_input)
+
+    # Persist for future use — the user has now proven they own this email + key,
+    # so we save the credentials per-user so they don't need to re-enter PSK.
+    # The dashboard will only ever show username + masked password from this point;
+    # the actual password is fetched by the AppVault browser extension on demand.
+    try:
+        d_username = decrypted.get('username') if isinstance(decrypted, dict) else None
+        d_password = decrypted.get('password') if isinstance(decrypted, dict) else None
+        d_app_url  = decrypted.get('app_url')  if isinstance(decrypted, dict) else None
+        # Fall back to applications table for app_url if missing
+        if not d_app_url:
+            urow = conn.run("SELECT url FROM applications WHERE name=:a", a=app_name)
+            if urow:
+                d_app_url = urow[0][0]
+        conn.run(
+            """INSERT INTO user_credentials (user_email, app_name, username, password, app_url, granted_at, revoked)
+               VALUES (:e, :a, :un, :pw, :url, NOW(), false)
+               ON CONFLICT (user_email, app_name)
+               DO UPDATE SET username=:un, password=:pw, app_url=:url, revoked=false, granted_at=NOW()""",
+            e=user_email, a=app_name, un=d_username, pw=d_password, url=d_app_url
+        )
+    except Exception as ex:
+        print(f"[verify_psk] failed to persist credentials: {ex}")
+
     conn.run("UPDATE psk_tokens SET used=true WHERE id=:id", id=token_id)
     conn.run("INSERT INTO audit_logs (user_email, app_name, action) VALUES (:e, :a, :ac)",
              e=user_email, a=app_name, ac="credentials_accessed_dashboard")
     conn.close()
 
-    return jsonify({"success": True, "credentials": decrypted})
+    # Return ONLY non-sensitive info to the dashboard. The password is never
+    # surfaced in the UI again — the extension fetches it on demand.
+    safe_creds = {
+        "username": decrypted.get("username") if isinstance(decrypted, dict) else None,
+        "app_url":  decrypted.get("app_url")  if isinstance(decrypted, dict) else None,
+        "app_name": app_name,
+    }
+    return jsonify({"success": True, "credentials": safe_creds})
 
 @app.route("/admin/access", methods=["GET"])
 @login_required

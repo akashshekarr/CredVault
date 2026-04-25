@@ -155,7 +155,7 @@
   </div>
 
 <script>
-  let allApps = [], myGrants = [], myPending = [], currentUser = null, passShown = false;
+  let allApps = [], myGrants = [], myPending = [], currentUser = null;
   const COLORS = ['#58E6D9','#9B7BFF','#4FE39B','#FF7AC6','#FFB547','#4A9BFF'];
   const colorFor = s => { let h=0; for(const c of s||'') h=(h*31+c.charCodeAt(0))>>>0; return COLORS[h%COLORS.length]; };
   const initials = s => (s||'').trim().split(/\s+/).map(w=>w[0]||'').slice(0,2).join('').toUpperCase()||'?';
@@ -317,46 +317,53 @@
   }
 
   function showCredentials(c, appName, appUrl) {
-    passShown = false;
-    const creds = typeof c === 'string' ? JSON.parse(c) : c;
+    const creds = (typeof c === 'string') ? JSON.parse(c) : (c || {});
+    const uname = creds.username || '—';
+    const targetUrl = creds.app_url || appUrl;
+
+    // Detect whether the AppVault extension is installed and paired so we can
+    // show the right hint to the user. We check asynchronously but render
+    // optimistically.
+    const extensionPaired = !!(window.AppVaultBridge && window.AppVaultBridge.isAvailable());
+
+    const hintBlock = extensionPaired
+      ? `<div class="note-box" style="border-color:rgba(79,227,155,0.3);background:rgba(79,227,155,0.06)">
+           <span style="color:#8FF1BC">✓ AppVault extension paired.</span> Click <strong>Open ${appName}</strong> below — you'll be signed in automatically. If MFA is enabled, you'll only need to enter your code.
+         </div>`
+      : `<div class="note-box" style="border-color:rgba(255,181,71,0.35);background:rgba(255,181,71,0.07)">
+           <span style="color:#FFB547">⚡ Install &amp; pair the AppVault extension</span> to sign in to ${appName} with one click. Without it, the password stays hidden and you won't be able to open the app from here.
+         </div>`;
+
     document.getElementById('mBody').innerHTML = `
       <div class="cred-row">
         <div class="cred-label">Username / Email</div>
         <div class="cred-val">
-          <span id="credUser">${creds.username||'—'}</span>
+          <span id="credUser">${uname}</span>
           <button class="cred-btn" id="copyUserBtn" title="Copy">📋</button>
         </div>
       </div>
       <div class="cred-row">
         <div class="cred-label">Password</div>
         <div class="cred-val">
-          <span id="passSpan">••••••••••</span>
-          <div style="display:flex;gap:6px">
-            <button class="cred-btn" id="togglePassBtn">👁</button>
-            <button class="cred-btn" id="copyPassBtn" title="Copy">📋</button>
-          </div>
+          <span id="passSpan" style="letter-spacing:0.18em">••••••••••</span>
+          <span style="font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace">hidden by design</span>
         </div>
       </div>
-      <button class="open-btn" id="openAppBtn">🚀 Open ${appName}</button>`;
+      ${hintBlock}
+      <button class="open-btn" id="openAppBtn" ${extensionPaired ? '' : 'disabled style="opacity:0.55;cursor:not-allowed"'}>
+        🚀 Open ${appName}${extensionPaired ? '' : ' (extension required)'}
+      </button>`;
     document.getElementById('mFoot').innerHTML = `<button onclick="closeModal()" style="font-family:'Space Grotesk',sans-serif;font-size:12px;font-weight:600;padding:9px 18px;border-radius:10px;cursor:pointer;border:1px solid #232b40;background:#161b29;color:#e7ecf5;">Close</button>`;
 
-    const pw = creds.password || '';
-    const uname = creds.username || '';
-    const targetUrl = creds.app_url || appUrl;
     document.getElementById('copyUserBtn').onclick = function() { copyToClip(uname, this); };
-    document.getElementById('copyPassBtn').onclick = function() { copyToClip(pw, this); };
-    document.getElementById('togglePassBtn').onclick = function() {
-      passShown = !passShown;
-      document.getElementById('passSpan').textContent = passShown ? pw : '••••••••••';
-    };
-    document.getElementById('openAppBtn').onclick = async function() {
-      if (window.AppVaultBridge && window.AppVaultBridge.isAvailable()) {
+
+    const openBtn = document.getElementById('openAppBtn');
+    if (openBtn && extensionPaired) {
+      openBtn.onclick = async function() {
         await window.AppVaultBridge.openWithExtension(appName, targetUrl);
-      } else {
-        window.open(targetUrl, '_blank', 'noopener');
-      }
-      closeModal();
-    };
+        closeModal();
+      };
+    }
   }
 
   async function submitPsk(appName, appUrl) {
