@@ -47,6 +47,8 @@
     .btn{background:linear-gradient(180deg,var(--surface2),var(--surface));border:1px solid var(--border);color:var(--text);font-family:'Space Grotesk',sans-serif;font-size:12px;font-weight:600;padding:9px 16px;border-radius:10px;cursor:pointer;transition:all 0.2s ease;letter-spacing:0.02em;position:relative;overflow:hidden}
     .btn:hover{border-color:var(--cyan);color:var(--cyan);transform:translateY(-1px);box-shadow:0 8px 20px -10px rgba(88,230,217,0.5)}
     .btn-primary{background:linear-gradient(135deg,var(--cyan),var(--violet));color:#07090f;border:1px solid rgba(255,255,255,0.18);font-weight:700;box-shadow:0 10px 28px -10px rgba(155,123,255,0.6),inset 0 1px 0 rgba(255,255,255,0.4)}
+    .btn-danger{background:rgba(255,92,122,0.10);color:#FFB1C0;border:1px solid rgba(255,92,122,0.35);font-weight:600}
+    .btn-danger:hover{background:rgba(255,92,122,0.18);color:#FF5C7A;border-color:rgba(255,92,122,0.6)}
     .btn-primary:hover{color:#07090f;filter:brightness(1.1);transform:translateY(-1px)}
     .btn-approve{background:var(--green-dim);color:#8FF1BC;border:1px solid rgba(79,227,155,0.35);font-family:'Space Grotesk',sans-serif;font-size:11px;font-weight:600;padding:7px 14px;border-radius:8px;cursor:pointer;transition:all 0.18s}
     .btn-approve:hover{background:rgba(79,227,155,0.25)}
@@ -301,6 +303,8 @@
 
   async function get(path){const r=await fetch(path);if(!r.ok)throw new Error(r.status);return r.json();}
   async function post(path,body){const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(!r.ok){const t=await r.text();throw new Error(t||r.status);}return r.json();}
+  async function put(path,body){const r=await fetch(path,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(!r.ok){const t=await r.text();throw new Error(t||r.status);}return r.json();}
+  async function del(path){const r=await fetch(path,{method:'DELETE'});if(!r.ok){const t=await r.text();throw new Error(t||r.status);}return r.json();}
 
   function setConn(ok){
     const dot=document.getElementById('connDot'),text=document.getElementById('connText');
@@ -347,30 +351,86 @@
 
   /* ── VIEW APP ── */
   function viewApp(id){
-    const app=allApps.find(a=>String(a.id)===String(id)); if(!app) return;
+    const app=allApps.find(a=>a.id===id); if(!app) return;
     openModal(app.name,
       `<div class="field"><div class="field-label">App Name</div><div class="field-val">${app.name}</div></div>
        <div class="field"><div class="field-label">URL</div><a class="field-val link" href="${app.url||'#'}" target="_blank">${app.url||'—'}</a></div>
-       <div class="field"><div class="field-label">Username / Email</div><div class="field-val">${app.username||'—'}</div></div>
-       <div class="field"><div class="field-label">Password</div><div class="field-val" id="appPassField" style="cursor:pointer" onclick="toggleAppPass()">••••••••••</div></div>
-       <div class="field"><div class="field-label">Added On</div><div class="field-val dim">${app.created_at ? new Date(app.created_at).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}) : '—'}</div></div>`,
-      `<button class="btn" onclick="closeModal()">Close</button>`
-    );
-    // Store password for reveal
-    window._currentAppPass = app.password || '—';
+       <div class="field"><div class="field-label">Username</div><div class="field-val">${app.username||'—'}</div></div>
+       <div class="field"><div class="field-label">Password</div><div class="field-val">••••••••••</div></div>
+       <div class="field"><div class="field-label">Document ID</div><div class="field-val dim">${app.id}</div></div>`,
+      `<button class="btn btn-danger" onclick="confirmDeleteApp('${app.id}','${(app.name||'').replace(/'/g,"\\'")}')">Delete</button>
+       <button class="btn btn-primary" onclick="editApp('${app.id}')">Edit</button>
+       <button class="btn" onclick="closeModal()">Close</button>`);
   }
 
-  function toggleAppPass(){
-    const el = document.getElementById('appPassField');
-    if(el.textContent === '••••••••••'){
-      el.textContent = window._currentAppPass;
-      el.style.background = 'rgba(255,92,122,0.08)';
-      el.style.borderRadius = '6px';
-      el.style.padding = '4px 8px';
+  /* ── EDIT APP ── */
+  async function editApp(id){
+    let app;
+    try { app = await get('/admin/applications/' + encodeURIComponent(id)); }
+    catch(e){ alert('Could not load app: '+e.message); return; }
+    openModal('Edit · ' + app.name,
+      `<div class="field"><div class="field-label">App Name *</div>
+         <input id="eName" class="inp" style="width:100%" value="${(app.name||'').replace(/"/g,'&quot;')}"></div>
+       <div class="field"><div class="field-label">URL *</div>
+         <input id="eUrl" class="inp" style="width:100%" value="${(app.url||'').replace(/"/g,'&quot;')}"></div>
+       <div class="field"><div class="field-label">Username / Email *</div>
+         <input id="eUser" class="inp" style="width:100%" value="${(app.username||'').replace(/"/g,'&quot;')}"></div>
+       <div class="field"><div class="field-label">Password (leave blank to keep current)</div>
+         <div style="display:flex;gap:6px;align-items:stretch">
+           <input id="ePass" type="password" class="inp" style="flex:1" placeholder="•••••••••• (unchanged)">
+           <button class="btn" type="button" id="eShowBtn" style="white-space:nowrap" onclick="togglePeek()">Show current</button>
+         </div>
+         <div id="ePeek" style="display:none;margin-top:6px;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);word-break:break-all"></div>
+       </div>
+       <div class="field"><div class="field-label">Document ID</div><div class="field-val dim">${app.id}</div></div>`,
+      `<button class="btn" onclick="closeModal()">Cancel</button>
+       <button class="btn btn-primary" onclick="saveApp('${app.id}')">Save Changes</button>`);
+    // stash the current password on the form so the Show button can reveal it
+    window.__editingPassword = app.password || '';
+  }
+
+  function togglePeek(){
+    const peek = document.getElementById('ePeek');
+    const btn  = document.getElementById('eShowBtn');
+    if (!peek) return;
+    if (peek.style.display === 'none') {
+      peek.style.display = 'block';
+      peek.textContent = window.__editingPassword || '(no password set)';
+      btn.textContent = 'Hide';
     } else {
-      el.textContent = '••••••••••';
-      el.style.background = '';
+      peek.style.display = 'none';
+      peek.textContent = '';
+      btn.textContent = 'Show current';
     }
+  }
+
+  async function saveApp(id){
+    const name=document.getElementById('eName').value.trim();
+    const url =document.getElementById('eUrl').value.trim();
+    const user=document.getElementById('eUser').value.trim();
+    const pass=document.getElementById('ePass').value;  // empty means "keep"
+    if(!name||!url||!user){alert('Name, URL and username are required.');return;}
+    try{
+      const body = { name, url, username: user };
+      if (pass) body.password = pass;
+      const r = await put('/admin/applications/' + encodeURIComponent(id), body);
+      window.__editingPassword = '';
+      closeModal();
+      loadAll();
+      if (r && r.credentials_rotated) {
+        setTimeout(() => alert('Password updated. Existing user unlocks for "' + name + '" have been revoked — users will need to enter a new PSK to fetch the new password.'), 100);
+      }
+    } catch(e){ alert('Error: '+e.message); }
+  }
+
+  /* ── DELETE APP ── */
+  async function confirmDeleteApp(id, name){
+    if(!confirm('Delete "' + name + '"?\n\nThis will also remove:\n· all access grants for this app\n· all pending requests\n· all saved user unlocks\n· any unused PSK tokens\n\nThis cannot be undone.')) return;
+    try{
+      await del('/admin/applications/' + encodeURIComponent(id));
+      closeModal();
+      loadAll();
+    } catch(e){ alert('Error: '+e.message); }
   }
 
   /* ── PENDING ── */
@@ -403,7 +463,7 @@
     const el=document.getElementById('appsPanel');
     if(!apps.length){el.innerHTML='<div class="empty">no apps yet</div>';return;}
     el.innerHTML=apps.map(a=>`
-      <div class="app-row" onclick="viewApp(${a.id})">
+      <div class="app-row" onclick="viewApp('${a.id}')">
         <div class="app-avatar" style="background:${colorFor(a.name)};color:#07090f">${initials(a.name)}</div>
         <div class="app-info"><div class="app-name">${a.name}</div><div class="app-user">${a.username||'—'}</div></div>
         <span class="badge badge-g">active</span>

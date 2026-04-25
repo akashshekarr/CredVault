@@ -528,6 +528,101 @@ def add_application():
     return jsonify({"success": True})
 
 
+@app.route("/admin/applications/<app_id>", methods=["GET"])
+@login_required
+def get_application(app_id):
+    """Return one app including its current password — admin needs to see it
+    when opening the edit modal so they can keep or change it."""
+    conn = get_db()
+    rows = conn.run("SELECT id, name, url, username, password, created_at FROM applications WHERE id=:i",
+                    i=app_id)
+    conn.close()
+    if not rows:
+        return jsonify({"error": "Not found"}), 404
+    r = rows[0]
+    return jsonify({
+        "id": r[0], "name": r[1], "url": r[2], "username": r[3],
+        "password": r[4],
+        "created_at": r[5].isoformat() if r[5] else None,
+    })
+
+
+@app.route("/admin/applications/<app_id>", methods=["PUT"])
+@login_required
+def update_application(app_id):
+    """Update an existing app. Password is OPTIONAL on update — if omitted or
+    empty, we keep the existing one. Other fields required."""
+    data = request.json or {}
+    for field in ["name", "url", "username"]:
+        if not data.get(field):
+            return jsonify({"error": f"'{field}' is required"}), 400
+
+    conn = get_db()
+    existing = conn.run("SELECT password FROM applications WHERE id=:i", i=app_id)
+    if not existing:
+        conn.close()
+        return jsonify({"error": "Not found"}), 404
+
+    new_password = data.get('password')
+    if not new_password:
+        new_password = existing[0][0]  # keep current
+
+    # Detect rename — if name changed, propagate it everywhere it's referenced
+    old_name_row = conn.run("SELECT name FROM applications WHERE id=:i", i=app_id)
+    old_name = old_name_row[0][0] if old_name_row else None
+    new_name = data['name']
+
+    try:
+        conn.run("""UPDATE applications
+                    SET name=:n, url=:u, username=:un, password=:p
+                    WHERE id=:i""",
+                 n=new_name, u=data['url'], un=data['username'], p=new_password, i=app_id)
+    except Exception as ex:
+        conn.close()
+        # Most common cause: unique constraint on name
+        return jsonify({"error": str(ex)}), 400
+
+    if old_name and old_name != new_name:
+        # Propagate name change to dependent rows
+        conn.run("UPDATE access_grants SET app_name=:nn WHERE app_name=:on", nn=new_name, on=old_name)
+        conn.run("UPDATE pending_requests SET app_name=:nn WHERE app_name=:on", nn=new_name, on=old_name)
+        conn.run("UPDATE user_credentials SET app_name=:nn WHERE app_name=:on", nn=new_name, on=old_name)
+        conn.run("UPDATE psk_tokens SET app_name=:nn WHERE app_name=:on", nn=new_name, on=old_name)
+
+    # If credentials were rotated, invalidate every saved unlock so users must
+    # re-PSK and pick up the new password.
+    creds_changed = (data.get('password') and data.get('password') != existing[0][0])
+    if creds_changed:
+        conn.run("UPDATE user_credentials SET revoked=true WHERE app_name=:n", n=new_name)
+
+    conn.close()
+    return jsonify({"success": True, "credentials_rotated": bool(creds_changed)})
+
+
+@app.route("/admin/applications/<app_id>", methods=["DELETE"])
+@login_required
+def delete_application(app_id):
+    """Hard-delete an app. Cascades to remove related access grants, pending
+    requests, saved user credentials, and unused PSK tokens."""
+    conn = get_db()
+    rows = conn.run("SELECT name FROM applications WHERE id=:i", i=app_id)
+    if not rows:
+        conn.close()
+        return jsonify({"error": "Not found"}), 404
+    app_name = rows[0][0]
+    try:
+        conn.run("DELETE FROM user_credentials WHERE app_name=:n", n=app_name)
+        conn.run("DELETE FROM access_grants    WHERE app_name=:n", n=app_name)
+        conn.run("DELETE FROM pending_requests WHERE app_name=:n", n=app_name)
+        conn.run("DELETE FROM psk_tokens       WHERE app_name=:n AND used=false", n=app_name)
+        conn.run("DELETE FROM applications     WHERE id=:i",       i=app_id)
+    except Exception as ex:
+        conn.close()
+        return jsonify({"error": str(ex)}), 400
+    conn.close()
+    return jsonify({"success": True, "deleted": app_name})
+
+
 @app.route("/admin/tokens", methods=["GET"])
 @login_required
 def admin_tokens():
