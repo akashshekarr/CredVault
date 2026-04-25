@@ -1149,6 +1149,97 @@ def extension_credentials(app_name):
     })
 
 
+@app.route('/api/extension/match-domain', methods=['POST'])
+@extension_token_required
+def extension_match_domain():
+    """Given a hostname (the page the user is currently on), return all of the
+    user's unlocked credentials whose stored app_url matches that hostname or
+    a known related domain. Used by the popup's 'matching credentials' list."""
+    data = request.json or {}
+    hostname = (data.get('hostname') or '').strip().lower()
+    if not hostname:
+        return jsonify([])
+    # Strip leading www.
+    if hostname.startswith('www.'):
+        hostname = hostname[4:]
+    # Build a set of acceptable hostnames — exact + parent domains.
+    # e.g. 'authenticator.cursor.sh' -> {'authenticator.cursor.sh', 'cursor.sh'}
+    parts = hostname.split('.')
+    candidates = set()
+    for i in range(len(parts) - 1):
+        candidates.add('.'.join(parts[i:]))
+
+    # Also fold in the obvious known related hosts. Static map keeps us honest
+    # for cases like chatgpt.com<->openai.com that aren't subdomain-related.
+    RELATED = {
+        'chatgpt.com':       {'openai.com', 'auth.openai.com', 'platform.openai.com'},
+        'openai.com':        {'chatgpt.com', 'chat.openai.com'},
+        'chat.openai.com':   {'chatgpt.com', 'openai.com'},
+        'cursor.com':        {'cursor.sh', 'authenticator.cursor.sh', 'cursor.us.auth0.com'},
+        'cursor.sh':         {'cursor.com', 'authenticator.cursor.sh', 'cursor.us.auth0.com'},
+        'claude.ai':         {'anthropic.com', 'console.anthropic.com'},
+        'anthropic.com':     {'claude.ai', 'console.anthropic.com'},
+    }
+    for c in list(candidates):
+        if c in RELATED:
+            candidates.update(RELATED[c])
+
+    email = request.extension_user_email
+    conn = get_db()
+    rows = conn.run(
+        """SELECT app_name, username, password, app_url FROM user_credentials
+           WHERE user_email=:e AND revoked=false""",
+        e=email
+    )
+    conn.close()
+
+    out = []
+    for app_name, uname, pw, app_url in rows:
+        if not app_url:
+            continue
+        try:
+            # Extract host from app_url
+            from urllib.parse import urlparse as _up
+            au = (app_url or '').strip()
+            if not au.startswith('http'):
+                au = 'https://' + au
+            host = (_up(au).hostname or '').lower()
+            if host.startswith('www.'):
+                host = host[4:]
+        except Exception:
+            host = ''
+        if not host:
+            continue
+        # Match if the stored host is in our candidates set, OR the current
+        # host ends with the stored host (e.g. authenticator.cursor.sh ends
+        # with cursor.sh, which is the stored value).
+        match = False
+        if host in candidates:
+            match = True
+        elif hostname == host or hostname.endswith('.' + host):
+            match = True
+        if match:
+            out.append({
+                "app_name": app_name,
+                "username": uname,
+                "password": pw,
+                "app_url": app_url,
+            })
+
+    # Audit
+    if out:
+        conn = get_db()
+        for cred in out:
+            conn.run(
+                """INSERT INTO audit_logs (user_email, app_name, action)
+                   VALUES (:e, :a, 'extension_match_domain')""",
+                e=email, a=cred["app_name"]
+            )
+        conn.close()
+
+    return jsonify(out)
+
+
 # ── Auto-create extension tables on startup if missing ────────────────────────
 def _ext_init_tables():
     try:
