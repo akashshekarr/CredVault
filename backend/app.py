@@ -413,12 +413,28 @@ def approve_request(request_id):
     u_name = urows[0][0] if urows else user_email.split('@')[0]
     u_desig = urows[0][1] if urows else ''
     u_dept = urows[0][2] if urows else ''
-    existing = conn.run("SELECT id FROM access_grants WHERE LOWER(user_name)=LOWER(:n) AND app_name=:a AND access_type='Credentials'",
+    existing = conn.run("""SELECT id, status FROM access_grants
+                           WHERE LOWER(user_name)=LOWER(:n) AND app_name=:a AND access_type='Credentials'
+                           ORDER BY granted_at DESC LIMIT 1""",
                         n=u_name, a=app_name)
     if not existing:
-        conn.run("""INSERT INTO access_grants (user_name, user_email, user_designation, user_department, app_name, access_type, granted_by, notes)
-                    VALUES (:un, :ue, :ud, :udept, :a, 'Credentials', 'auto', 'Auto-logged via CredVault approval')""",
+        # Brand new grant
+        conn.run("""INSERT INTO access_grants (user_name, user_email, user_designation, user_department, app_name, access_type, granted_by, notes, status)
+                    VALUES (:un, :ue, :ud, :udept, :a, 'Credentials', 'auto', 'Auto-logged via CredVault approval', 'active')""",
                  un=u_name, ue=user_email, ud=u_desig, udept=u_dept, a=app_name)
+    else:
+        # Existing grant — reactivate if it was revoked, otherwise leave it.
+        # We do NOT clear user_credentials.revoked here; the user must re-enter
+        # the PSK so verify_psk can refresh username/password (in case the app
+        # password was rotated between revoke and re-approval). verify_psk will
+        # UPSERT and clear the revoked flag at that point.
+        existing_id, existing_status = existing[0]
+        if (existing_status or 'active') != 'active':
+            conn.run("""UPDATE access_grants
+                        SET status='active', granted_by='auto', granted_at=NOW(),
+                            notes='Re-granted via CredVault approval', user_email=:ue
+                        WHERE id=:id""",
+                     id=existing_id, ue=user_email)
 
     conn.close()
     portal_link = f"{os.getenv('PORTAL_BASE_URL')}/access/{token_id}"
