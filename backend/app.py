@@ -776,7 +776,8 @@ def user_my_grants():
 
     rows = conn.run("""SELECT app_name, access_type, granted_at, notes
                        FROM access_grants
-                       WHERE LOWER(user_name) LIKE LOWER(:q) OR LOWER(user_email)=LOWER(:e)
+                       WHERE (LOWER(user_name) LIKE LOWER(:q) OR LOWER(user_email)=LOWER(:e))
+                         AND COALESCE(status, 'active') = 'active'
                        ORDER BY granted_at DESC""",
                     q=f"%{email_prefix.split(' ')[0]}%", e=user_email)
     conn.close()
