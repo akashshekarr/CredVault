@@ -557,52 +557,66 @@ def get_application(app_id):
 @login_required
 def update_application(app_id):
     """Update an existing app. Password is OPTIONAL on update — if omitted or
-    empty, we keep the existing one. Other fields required."""
+    empty, we keep the existing one. Other fields required.
+
+    Behavior on update: every user_credentials row tied to this app is updated
+    in place with the new username / password / app_url. This means admin
+    edits flow IMMEDIATELY to all users and the extension — no PSK re-entry,
+    no stale credentials. The user_credentials table mirrors applications."""
     data = request.json or {}
     for field in ["name", "url", "username"]:
         if not data.get(field):
             return jsonify({"error": f"'{field}' is required"}), 400
 
     conn = get_db()
-    existing = conn.run("SELECT password FROM applications WHERE id=:i", i=app_id)
+    existing = conn.run("SELECT name, url, username, password FROM applications WHERE id=:i", i=app_id)
     if not existing:
         conn.close()
         return jsonify({"error": "Not found"}), 404
 
+    old_name, old_url, old_username, old_password = existing[0]
+
     new_password = data.get('password')
     if not new_password:
-        new_password = existing[0][0]  # keep current
+        new_password = old_password  # keep current
 
-    # Detect rename — if name changed, propagate it everywhere it's referenced
-    old_name_row = conn.run("SELECT name FROM applications WHERE id=:i", i=app_id)
-    old_name = old_name_row[0][0] if old_name_row else None
     new_name = data['name']
+    new_url  = data['url']
+    new_username = data['username']
 
     try:
         conn.run("""UPDATE applications
                     SET name=:n, url=:u, username=:un, password=:p
                     WHERE id=:i""",
-                 n=new_name, u=data['url'], un=data['username'], p=new_password, i=app_id)
+                 n=new_name, u=new_url, un=new_username, p=new_password, i=app_id)
     except Exception as ex:
         conn.close()
-        # Most common cause: unique constraint on name
         return jsonify({"error": str(ex)}), 400
 
+    # Propagate name change to dependent rows BEFORE updating credentials,
+    # so the credentials update can find them by the new name.
     if old_name and old_name != new_name:
-        # Propagate name change to dependent rows
-        conn.run("UPDATE access_grants SET app_name=:nn WHERE app_name=:on", nn=new_name, on=old_name)
+        conn.run("UPDATE access_grants    SET app_name=:nn WHERE app_name=:on", nn=new_name, on=old_name)
         conn.run("UPDATE pending_requests SET app_name=:nn WHERE app_name=:on", nn=new_name, on=old_name)
         conn.run("UPDATE user_credentials SET app_name=:nn WHERE app_name=:on", nn=new_name, on=old_name)
-        conn.run("UPDATE psk_tokens SET app_name=:nn WHERE app_name=:on", nn=new_name, on=old_name)
+        conn.run("UPDATE psk_tokens       SET app_name=:nn WHERE app_name=:on", nn=new_name, on=old_name)
 
-    # If credentials were rotated, invalidate every saved unlock so users must
-    # re-PSK and pick up the new password.
-    creds_changed = (data.get('password') and data.get('password') != existing[0][0])
-    if creds_changed:
-        conn.run("UPDATE user_credentials SET revoked=true WHERE app_name=:n", n=new_name)
+    # Propagate username/password/app_url to every user who has unlocked this app.
+    # We DO NOT revoke — admin's edit is the source of truth, users should pick
+    # up the new values automatically next time they open the app.
+    propagated = conn.run(
+        """UPDATE user_credentials
+           SET username=:un, password=:pw, app_url=:url
+           WHERE app_name=:n AND revoked=false
+           RETURNING user_email""",
+        un=new_username, pw=new_password, url=new_url, n=new_name
+    )
 
     conn.close()
-    return jsonify({"success": True, "credentials_rotated": bool(creds_changed)})
+    return jsonify({
+        "success": True,
+        "users_updated": len(propagated) if propagated else 0,
+    })
 
 
 @app.route("/admin/applications/<app_id>", methods=["DELETE"])
@@ -811,20 +825,43 @@ def get_saved_credentials(app_name):
     """Returns whether the user has unlocked this app and the username/app_url
     for display. The password is intentionally NOT returned — the dashboard
     only displays a masked placeholder. The browser extension fetches the
-    actual password via /api/extension/credentials/<app_name>."""
+    actual password via /api/extension/credentials/<app_name>.
+
+    Self-heal: if the user_credentials row exists but has empty username or
+    password (e.g. from an older buggy save), pull the fresh values from
+    applications and overwrite. Admin's app row is the source of truth."""
     user_email = session.get('user_email')
     conn = get_db()
-    rows = conn.run("""SELECT username, app_url FROM user_credentials
+    rows = conn.run("""SELECT username, app_url, password FROM user_credentials
                        WHERE user_email=:e AND app_name=:a AND revoked=false""",
                     e=user_email, a=app_name)
-    conn.close()
     if not rows:
+        conn.close()
         return jsonify({"found": False})
+
+    username, app_url, password = rows[0]
+    if not username or not password:
+        # Heal from applications
+        app_rows = conn.run(
+            "SELECT username, password, url FROM applications WHERE name=:a",
+            a=app_name
+        )
+        if app_rows:
+            a_un, a_pw, a_url = app_rows[0]
+            conn.run(
+                """UPDATE user_credentials
+                   SET username=:un, password=:pw, app_url=:url
+                   WHERE user_email=:e AND app_name=:a""",
+                un=a_un, pw=a_pw, url=a_url, e=user_email, a=app_name
+            )
+            username, app_url = a_un, a_url
+    conn.close()
+
     return jsonify({
         "found": True,
         "credentials": {
-            "username": rows[0][0],
-            "app_url":  rows[0][1],
+            "username": username,
+            "app_url":  app_url,
             "app_name": app_name,
         }
     })
@@ -1246,19 +1283,39 @@ def extension_credentials(app_name):
            WHERE user_email=:e AND app_name=:a AND revoked=false""",
         e=email, a=app_name
     )
+    if not rows:
+        conn.close()
+        return jsonify({"error": "Not found or no access"}), 404
+
+    username, password, app_url = rows[0]
+    # Self-heal: if our copy is missing values, pull the fresh ones from
+    # applications and overwrite. Admin is the source of truth.
+    if not username or not password:
+        app_rows = conn.run(
+            "SELECT username, password, url FROM applications WHERE name=:a",
+            a=app_name
+        )
+        if app_rows:
+            a_un, a_pw, a_url = app_rows[0]
+            conn.run(
+                """UPDATE user_credentials
+                   SET username=:un, password=:pw, app_url=:url
+                   WHERE user_email=:e AND app_name=:a""",
+                un=a_un, pw=a_pw, url=a_url, e=email, a=app_name
+            )
+            username, password, app_url = a_un, a_pw, a_url
+
     conn.run(
         """INSERT INTO audit_logs (user_email, app_name, action)
            VALUES (:e, :a, 'extension_fetch')""",
         e=email, a=app_name
     )
     conn.close()
-    if not rows:
-        return jsonify({"error": "Not found or no access"}), 404
     return jsonify({
         "app_name": app_name,
-        "username": rows[0][0],
-        "password": rows[0][1],
-        "app_url": rows[0][2],
+        "username": username,
+        "password": password,
+        "app_url":  app_url,
     })
 
 
@@ -1287,6 +1344,7 @@ def extension_match_domain():
 
     out = []
     from urllib.parse import urlparse as _up
+    heal_conn = None
     for app_name, uname, pw, app_url in rows:
         if not app_url:
             continue
@@ -1303,12 +1361,31 @@ def extension_match_domain():
             continue
         # Strict match only — exact hostname equality
         if hostname == host:
+            # Self-heal: if our row has empty username or password, refill from applications
+            if not uname or not pw:
+                if heal_conn is None:
+                    heal_conn = get_db()
+                arows = heal_conn.run(
+                    "SELECT username, password, url FROM applications WHERE name=:a",
+                    a=app_name
+                )
+                if arows:
+                    a_un, a_pw, a_url = arows[0]
+                    heal_conn.run(
+                        """UPDATE user_credentials
+                           SET username=:un, password=:pw, app_url=:url
+                           WHERE user_email=:e AND app_name=:a""",
+                        un=a_un, pw=a_pw, url=a_url, e=email, a=app_name
+                    )
+                    uname, pw, app_url = a_un, a_pw, a_url
             out.append({
                 "app_name": app_name,
                 "username": uname,
                 "password": pw,
                 "app_url": app_url,
             })
+    if heal_conn is not None:
+        heal_conn.close()
 
     if out:
         conn = get_db()

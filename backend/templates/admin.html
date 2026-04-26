@@ -421,8 +421,8 @@
       window.__editingPassword = '';
       closeModal();
       loadAll();
-      if (r && r.credentials_rotated) {
-        setTimeout(() => alert('Password updated. Existing user unlocks for "' + name + '" have been revoked — users will need to enter a new PSK to fetch the new password.'), 100);
+      if (r && typeof r.users_updated === 'number' && r.users_updated > 0) {
+        setTimeout(() => alert('Saved. ' + r.users_updated + ' user(s) had their saved credentials updated automatically — they will pick up the new values immediately.'), 100);
       }
     } catch(e){ alert('Error: '+e.message); }
   }
