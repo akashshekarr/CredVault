@@ -352,13 +352,14 @@
   /* ── VIEW APP ── */
   function viewApp(id){
     const app=allApps.find(a=>a.id===id); if(!app) return;
+    const safeName = (app.name||'').replace(/'/g,"\\'").replace(/"/g,'&quot;');
     openModal(app.name,
       `<div class="field"><div class="field-label">App Name</div><div class="field-val">${app.name}</div></div>
        <div class="field"><div class="field-label">URL</div><a class="field-val link" href="${app.url||'#'}" target="_blank">${app.url||'—'}</a></div>
        <div class="field"><div class="field-label">Username</div><div class="field-val">${app.username||'—'}</div></div>
        <div class="field"><div class="field-label">Password</div><div class="field-val">••••••••••</div></div>
        <div class="field"><div class="field-label">Document ID</div><div class="field-val dim">${app.id}</div></div>`,
-      `<button class="btn btn-danger" onclick="confirmDeleteApp('${app.id}','${(app.name||'').replace(/'/g,"\\'")}')">Delete</button>
+      `<button class="btn btn-danger" onclick="confirmDeleteApp('${app.id}','${safeName}')">Delete</button>
        <button class="btn btn-primary" onclick="editApp('${app.id}')">Edit</button>
        <button class="btn" onclick="closeModal()">Close</button>`);
   }
@@ -368,13 +369,14 @@
     let app;
     try { app = await get('/admin/applications/' + encodeURIComponent(id)); }
     catch(e){ alert('Could not load app: '+e.message); return; }
+    const esc = (s) => (s==null?'':String(s)).replace(/"/g,'&quot;');
     openModal('Edit · ' + app.name,
       `<div class="field"><div class="field-label">App Name *</div>
-         <input id="eName" class="inp" style="width:100%" value="${(app.name||'').replace(/"/g,'&quot;')}"></div>
+         <input id="eName" class="inp" style="width:100%" value="${esc(app.name)}"></div>
        <div class="field"><div class="field-label">URL *</div>
-         <input id="eUrl" class="inp" style="width:100%" value="${(app.url||'').replace(/"/g,'&quot;')}"></div>
+         <input id="eUrl" class="inp" style="width:100%" value="${esc(app.url)}"></div>
        <div class="field"><div class="field-label">Username / Email *</div>
-         <input id="eUser" class="inp" style="width:100%" value="${(app.username||'').replace(/"/g,'&quot;')}"></div>
+         <input id="eUser" class="inp" style="width:100%" value="${esc(app.username)}"></div>
        <div class="field"><div class="field-label">Password (leave blank to keep current)</div>
          <div style="display:flex;gap:6px;align-items:stretch">
            <input id="ePass" type="password" class="inp" style="flex:1" placeholder="•••••••••• (unchanged)">
@@ -385,7 +387,6 @@
        <div class="field"><div class="field-label">Document ID</div><div class="field-val dim">${app.id}</div></div>`,
       `<button class="btn" onclick="closeModal()">Cancel</button>
        <button class="btn btn-primary" onclick="saveApp('${app.id}')">Save Changes</button>`);
-    // stash the current password on the form so the Show button can reveal it
     window.__editingPassword = app.password || '';
   }
 
@@ -408,7 +409,7 @@
     const name=document.getElementById('eName').value.trim();
     const url =document.getElementById('eUrl').value.trim();
     const user=document.getElementById('eUser').value.trim();
-    const pass=document.getElementById('ePass').value;  // empty means "keep"
+    const pass=document.getElementById('ePass').value;
     if(!name||!url||!user){alert('Name, URL and username are required.');return;}
     try{
       const body = { name, url, username: user };
