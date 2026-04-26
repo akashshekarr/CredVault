@@ -351,7 +351,10 @@
 
   /* ── VIEW APP ── */
   function viewApp(id){
-    const app=allApps.find(a=>a.id===id); if(!app) return;
+    // id arrives as a STRING from inline onclick — but postgres returns
+    // numeric ids — so coerce both sides for the comparison.
+    const app = allApps.find(a => String(a.id) === String(id));
+    if(!app) return;
     const safeName = (app.name||'').replace(/'/g,"\\'").replace(/"/g,'&quot;');
     openModal(app.name,
       `<div class="field"><div class="field-label">App Name</div><div class="field-val">${app.name}</div></div>
