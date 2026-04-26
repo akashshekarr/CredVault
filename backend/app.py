@@ -489,6 +489,12 @@ def access_portal(token_id):
     if isinstance(encrypted_creds, str):
         encrypted_creds = json.loads(encrypted_creds)
     decrypted = decrypt_credentials(encrypted_creds, psk_input)
+    # Parse the decrypted JSON string into a dict (we json.dumps'd on encrypt)
+    if isinstance(decrypted, str):
+        try:
+            decrypted = json.loads(decrypted)
+        except Exception:
+            pass
     conn.run("UPDATE psk_tokens SET used=true WHERE id=:id", id=token_id)
     conn.run("INSERT INTO audit_logs (user_email, app_name, action) VALUES (:e, :a, :ac)",
              e=user_email, a=app_name, ac="credentials_accessed")
@@ -997,14 +1003,26 @@ def user_verify_psk():
 
     decrypted = decrypt_credentials(encrypted_creds, psk_input)
 
+    # decrypt_credentials returns the original JSON STRING (because we encrypted
+    # json.dumps({...}) when minting the token). Parse it into a dict here so
+    # downstream code can use .get() safely.
+    if isinstance(decrypted, str):
+        try:
+            decrypted = json.loads(decrypted)
+        except Exception as ex:
+            print(f"[verify_psk] decrypted payload was a string but not valid JSON: {ex}")
+            decrypted = {}
+    if not isinstance(decrypted, dict):
+        decrypted = {}
+
     # Persist for future use — the user has now proven they own this email + key,
     # so we save the credentials per-user so they don't need to re-enter PSK.
     # The dashboard will only ever show username + masked password from this point;
     # the actual password is fetched by the AppVault browser extension on demand.
     try:
-        d_username = decrypted.get('username') if isinstance(decrypted, dict) else None
-        d_password = decrypted.get('password') if isinstance(decrypted, dict) else None
-        d_app_url  = decrypted.get('app_url')  if isinstance(decrypted, dict) else None
+        d_username = decrypted.get('username')
+        d_password = decrypted.get('password')
+        d_app_url  = decrypted.get('app_url')
         # Fall back to applications table for app_url if missing
         if not d_app_url:
             urow = conn.run("SELECT url FROM applications WHERE name=:a", a=app_name)
@@ -1028,8 +1046,8 @@ def user_verify_psk():
     # Return ONLY non-sensitive info to the dashboard. The password is never
     # surfaced in the UI again — the extension fetches it on demand.
     safe_creds = {
-        "username": decrypted.get("username") if isinstance(decrypted, dict) else None,
-        "app_url":  decrypted.get("app_url")  if isinstance(decrypted, dict) else None,
+        "username": decrypted.get("username"),
+        "app_url":  decrypted.get("app_url"),
         "app_name": app_name,
     }
     return jsonify({"success": True, "credentials": safe_creds})
@@ -1247,37 +1265,16 @@ def extension_credentials(app_name):
 @app.route('/api/extension/match-domain', methods=['POST'])
 @extension_token_required
 def extension_match_domain():
-    """Given a hostname (the page the user is currently on), return all of the
-    user's unlocked credentials whose stored app_url matches that hostname or
-    a known related domain. Used by the popup's 'matching credentials' list."""
+    """Strict-match version: returns user's unlocked credentials whose stored
+    app_url hostname EQUALS the page's hostname. No subdomain or related-domain
+    magic. Tab-tagged matches are handled client-side in the extension and
+    bypass this endpoint entirely."""
     data = request.json or {}
     hostname = (data.get('hostname') or '').strip().lower()
     if not hostname:
         return jsonify([])
-    # Strip leading www.
     if hostname.startswith('www.'):
         hostname = hostname[4:]
-    # Build a set of acceptable hostnames — exact + parent domains.
-    # e.g. 'authenticator.cursor.sh' -> {'authenticator.cursor.sh', 'cursor.sh'}
-    parts = hostname.split('.')
-    candidates = set()
-    for i in range(len(parts) - 1):
-        candidates.add('.'.join(parts[i:]))
-
-    # Also fold in the obvious known related hosts. Static map keeps us honest
-    # for cases like chatgpt.com<->openai.com that aren't subdomain-related.
-    RELATED = {
-        'chatgpt.com':       {'openai.com', 'auth.openai.com', 'platform.openai.com'},
-        'openai.com':        {'chatgpt.com', 'chat.openai.com'},
-        'chat.openai.com':   {'chatgpt.com', 'openai.com'},
-        'cursor.com':        {'cursor.sh', 'authenticator.cursor.sh', 'cursor.us.auth0.com'},
-        'cursor.sh':         {'cursor.com', 'authenticator.cursor.sh', 'cursor.us.auth0.com'},
-        'claude.ai':         {'anthropic.com', 'console.anthropic.com'},
-        'anthropic.com':     {'claude.ai', 'console.anthropic.com'},
-    }
-    for c in list(candidates):
-        if c in RELATED:
-            candidates.update(RELATED[c])
 
     email = request.extension_user_email
     conn = get_db()
@@ -1289,12 +1286,11 @@ def extension_match_domain():
     conn.close()
 
     out = []
+    from urllib.parse import urlparse as _up
     for app_name, uname, pw, app_url in rows:
         if not app_url:
             continue
         try:
-            # Extract host from app_url
-            from urllib.parse import urlparse as _up
             au = (app_url or '').strip()
             if not au.startswith('http'):
                 au = 'https://' + au
@@ -1305,15 +1301,8 @@ def extension_match_domain():
             host = ''
         if not host:
             continue
-        # Match if the stored host is in our candidates set, OR the current
-        # host ends with the stored host (e.g. authenticator.cursor.sh ends
-        # with cursor.sh, which is the stored value).
-        match = False
-        if host in candidates:
-            match = True
-        elif hostname == host or hostname.endswith('.' + host):
-            match = True
-        if match:
+        # Strict match only — exact hostname equality
+        if hostname == host:
             out.append({
                 "app_name": app_name,
                 "username": uname,
@@ -1321,7 +1310,6 @@ def extension_match_domain():
                 "app_url": app_url,
             })
 
-    # Audit
     if out:
         conn = get_db()
         for cred in out:
