@@ -100,9 +100,15 @@ def init_db():
             emp_id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
             designation TEXT,
-            department TEXT
+            department TEXT,
+            email TEXT
         )
     """)
+    # Idempotent migration for databases that pre-date the email column
+    try:
+        conn.run("ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT")
+    except Exception as _ex:
+        print(f"[users] email column migration skipped: {_ex}")
     conn.run("""
         CREATE TABLE IF NOT EXISTS access_grants (
             id SERIAL PRIMARY KEY,
@@ -696,9 +702,16 @@ def admin_pending():
 @login_required
 def admin_users():
     conn = get_db()
-    rows = conn.run("SELECT emp_id, name, designation, department, email FROM users ORDER BY name")
+    try:
+        rows = conn.run("SELECT emp_id, name, designation, department, email FROM users ORDER BY name")
+        out = [{"emp_id": r[0], "name": r[1], "designation": r[2], "department": r[3], "email": r[4]} for r in rows]
+    except Exception as ex:
+        # email column missing — fall back to legacy schema so the page keeps working
+        print(f"[admin_users] falling back to legacy schema: {ex}")
+        rows = conn.run("SELECT emp_id, name, designation, department FROM users ORDER BY name")
+        out = [{"emp_id": r[0], "name": r[1], "designation": r[2], "department": r[3], "email": None} for r in rows]
     conn.close()
-    return jsonify([{"emp_id": r[0], "name": r[1], "designation": r[2], "department": r[3], "email": r[4]} for r in rows])
+    return jsonify(out)
 
 
 @app.route("/admin/users", methods=["POST"])
