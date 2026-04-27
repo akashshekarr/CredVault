@@ -274,7 +274,12 @@
 
     if (grant && grant.access_type === 'Individual ID') {
       document.getElementById('mBody').innerHTML = `
-        <div class="note-box">You have <strong style="color:#9B7BFF">Individual ID</strong> access.<br>Sign in using your <strong style="color:#58E6D9">5C Network Google account</strong>.</div>
+        <div class="note-box" style="line-height:1.6">
+          <strong style="color:#9B7BFF">Access provisioned on your own email.</strong><br>
+          Kindly check your inbox for the invitation from <strong style="color:#58E6D9">${appName}</strong>.<br>
+          If you don't see it, just sign in to ${appName} with your <strong style="color:#58E6D9">@5cnetwork.com</strong> Google account.<br>
+          <span style="color:#aab3c8">If you're facing any issue, please contact your IT administrator.</span>
+        </div>
         <a href="${appUrl}" target="_blank" class="open-btn">🚀 Open ${appName}</a>`;
       document.getElementById('mFoot').innerHTML = `<button onclick="closeModal()" style="font-family:'Space Grotesk',sans-serif;font-size:12px;font-weight:600;padding:9px 18px;border-radius:10px;cursor:pointer;border:1px solid #232b40;background:#161b29;color:#e7ecf5;">Close</button>`;
       openModal();

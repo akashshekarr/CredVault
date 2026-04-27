@@ -383,6 +383,31 @@ def approve_request(request_id):
     if status != 'pending':
         conn.close()
         return jsonify({"error": f"Request already {status}"}), 400
+
+    # ── Path detection ────────────────────────────────────────────────────────
+    # If an active Individual ID grant already exists for this user+app, the
+    # admin has already provisioned them on their own email. We approve the
+    # request WITHOUT generating a PSK or sending shared credentials.
+    indiv_grant = conn.run(
+        """SELECT id FROM access_grants
+           WHERE LOWER(user_email)=LOWER(:e) AND app_name=:a
+             AND access_type='Individual ID'
+             AND COALESCE(status,'active')='active'
+           LIMIT 1""",
+        e=user_email, a=app_name
+    )
+    if indiv_grant:
+        conn.run("UPDATE pending_requests SET status='approved', reviewed_at=NOW() WHERE id=:id", id=request_id)
+        conn.run("INSERT INTO audit_logs (user_email, app_name, action) VALUES (:e, :a, :ac)",
+                 e=user_email, a=app_name, ac="approved_individual_id")
+        conn.close()
+        return jsonify({
+            "success": True,
+            "path": "individual_id",
+            "message": f"Approved. {user_email} already has Individual ID access — no shared credentials sent."
+        })
+
+    # ── Path: shared credentials (existing flow, unchanged) ───────────────────
     app_rows = conn.run("SELECT id, name, url, username, password FROM applications WHERE name = :n", n=app_name)
     if not app_rows:
         conn.close()
@@ -424,10 +449,6 @@ def approve_request(request_id):
                  un=u_name, ue=user_email, ud=u_desig, udept=u_dept, a=app_name)
     else:
         # Existing grant — reactivate if it was revoked, otherwise leave it.
-        # We do NOT clear user_credentials.revoked here; the user must re-enter
-        # the PSK so verify_psk can refresh username/password (in case the app
-        # password was rotated between revoke and re-approval). verify_psk will
-        # UPSERT and clear the revoked flag at that point.
         existing_id, existing_status = existing[0]
         if (existing_status or 'active') != 'active':
             conn.run("""UPDATE access_grants
@@ -441,7 +462,7 @@ def approve_request(request_id):
     threading.Thread(target=send_credentials_email,
                      args=(user_email, app_name, app_url, psk, portal_link),
                      daemon=True).start()
-    return jsonify({"success": True, "message": f"Approved. Credentials sent to {user_email}"})
+    return jsonify({"success": True, "path": "credentials", "message": f"Approved. Credentials sent to {user_email}"})
 
 
 @app.route("/api/admin/reject/<request_id>", methods=["POST"])
@@ -713,8 +734,34 @@ def add_access_grant():
              ud=data.get('user_designation',''), udept=data.get('user_department',''),
              a=data['app_name'], at=data['access_type'],
              gb=session.get('admin_username','admin'), n=data.get('notes',''))
+
+    # If this is an Individual ID grant, auto-resolve any pending request the
+    # user has for the same app — they don't need shared credentials anymore.
+    auto_resolved = 0
+    if data['access_type'] == 'Individual ID':
+        user_email = (data.get('user_email') or '').strip().lower()
+        if user_email:
+            pending = conn.run(
+                """SELECT id FROM pending_requests
+                   WHERE LOWER(user_email)=:e AND app_name=:a AND status='pending'""",
+                e=user_email, a=data['app_name']
+            )
+            for (pid,) in pending:
+                conn.run(
+                    """UPDATE pending_requests
+                       SET status='approved', reviewed_at=NOW()
+                       WHERE id=:id""",
+                    id=pid
+                )
+                conn.run(
+                    """INSERT INTO audit_logs (user_email, app_name, action)
+                       VALUES (:e, :a, 'auto_resolved_individual_id')""",
+                    e=user_email, a=data['app_name']
+                )
+                auto_resolved += 1
+
     conn.close()
-    return jsonify({"success": True})
+    return jsonify({"success": True, "auto_resolved_requests": auto_resolved})
 
 
 @app.route("/admin/access-grants/<int:grant_id>", methods=["DELETE"])
