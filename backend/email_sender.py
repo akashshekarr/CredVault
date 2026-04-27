@@ -18,20 +18,15 @@ def send_credentials_email(to_email, app_name, app_url, psk, portal_link):
     html_body = f"""
     <html><body style="font-family:sans-serif;max-width:500px;margin:auto">
       <h2 style="color:#1a73e8">Your credentials for {app_name}</h2>
-      <p>Your access request has been approved. Follow the steps below.</p>
+      <p>Your access request has been approved. Use the pre-shared key below in the App Portal to view your credentials.</p>
       <div style="background:#f8f9fa;padding:16px;border-radius:8px;margin:16px 0">
-        <p><strong>Step 1</strong> - Click this link:</p>
-        <a href="{portal_link}">{portal_link}</a>
+        <p style="margin:0 0 8px 0"><strong>Pre-shared key</strong></p>
+        <code style="background:#e8f0fe;padding:8px 16px;border-radius:6px;font-size:20px;letter-spacing:3px;display:inline-block">{psk}</code>
       </div>
-      <div style="background:#f8f9fa;padding:16px;border-radius:8px;margin:16px 0">
-        <p><strong>Step 2</strong> - Enter this pre-shared key:</p>
-        <code style="background:#e8f0fe;padding:8px 16px;border-radius:6px;font-size:20px;letter-spacing:3px">{psk}</code>
-      </div>
-      <div style="background:#f8f9fa;padding:16px;border-radius:8px;margin:16px 0">
-        <p><strong>Step 3</strong> - Visit the app:</p>
-        <a href="{app_url}">{app_url}</a>
-      </div>
-      <p style="color:#888;font-size:12px">Key expires in 48 hours. Single use only. Do not share.</p>
+      <p style="color:#555;font-size:13px;margin-top:20px">
+        Open the App Portal, click <strong>View Credentials</strong> on <strong>{app_name}</strong>, and paste this key.
+      </p>
+      <p style="color:#888;font-size:12px;margin-top:16px">Key expires in 48 hours. Single use only. Do not share.</p>
     </body></html>
     """
 
