@@ -125,15 +125,20 @@
                 <input type="text" id="grantUserName" placeholder="Start typing name..." oninput="searchUsers(this.value)" autocomplete="off"/>
                 <div class="autocomplete-list" id="autocompleteList" style="display:none"></div>
               </div>
+              <div id="manualHint" style="display:none;margin-top:8px;font-size:12px;color:var(--muted)">
+                Not found in directory? <a href="#" onclick="enableManualEntry();return false;" style="color:var(--cyan);text-decoration:none;font-weight:600">Enter manually</a>
+              </div>
             </div>
             <div class="field-row">
               <div class="field">
                 <label>Designation</label>
                 <div class="field-info" id="grantDesig">—</div>
+                <input type="text" id="grantDesigInput" placeholder="e.g. Engineer" style="display:none" autocomplete="off"/>
               </div>
               <div class="field">
                 <label>Department</label>
                 <div class="field-info" id="grantDept">—</div>
+                <input type="text" id="grantDeptInput" placeholder="e.g. IT" style="display:none" autocomplete="off"/>
               </div>
             </div>
             <div class="field">
@@ -252,11 +257,55 @@
     } catch(e) { console.error(e); }
   }
 
+  let manualMode = false;
+
+  function setManualMode(on) {
+    manualMode = on;
+    const desigDiv  = document.getElementById('grantDesig');
+    const deptDiv   = document.getElementById('grantDept');
+    const desigInp  = document.getElementById('grantDesigInput');
+    const deptInp   = document.getElementById('grantDeptInput');
+    const hint      = document.getElementById('manualHint');
+    if (on) {
+      desigDiv.style.display = 'none';
+      deptDiv.style.display  = 'none';
+      desigInp.style.display = 'block';
+      deptInp.style.display  = 'block';
+      hint.style.display = 'none';
+      selectedUser = null;          // user is being entered manually
+    } else {
+      desigDiv.style.display = '';
+      deptDiv.style.display  = '';
+      desigInp.style.display = 'none';
+      deptInp.style.display  = 'none';
+      desigInp.value = '';
+      deptInp.value  = '';
+    }
+  }
+
+  function enableManualEntry() {
+    setManualMode(true);
+    document.getElementById('grantDesigInput').focus();
+  }
+
   function searchUsers(q) {
     const list = document.getElementById('autocompleteList');
-    if (!q || q.length < 2) { list.style.display='none'; return; }
+    const hint = document.getElementById('manualHint');
+    // Typing again resets manual mode and clears previously selected user fields
+    if (manualMode) setManualMode(false);
+    if (selectedUser && q !== selectedUser.name) {
+      selectedUser = null;
+      document.getElementById('grantDesig').textContent = '—';
+      document.getElementById('grantDept').textContent = '—';
+    }
+    if (!q || q.length < 2) { list.style.display='none'; hint.style.display='none'; return; }
     const matches = allUsers.filter(u => u.name.toLowerCase().includes(q.toLowerCase())).slice(0, 8);
-    if (!matches.length) { list.style.display='none'; return; }
+    if (!matches.length) {
+      list.style.display = 'none';
+      hint.style.display = 'block';   // offer manual entry
+      return;
+    }
+    hint.style.display = 'none';
     list.innerHTML = matches.map(u => `
       <div class="autocomplete-item" onclick="selectUser(${JSON.stringify(u).replace(/"/g,'&quot;')})">
         <strong>${u.name}</strong> <span style="color:var(--muted)">· ${u.designation||''} · ${u.department||''}</span>
@@ -265,11 +314,13 @@
   }
 
   function selectUser(user) {
+    if (manualMode) setManualMode(false);
     selectedUser = user;
     document.getElementById('grantUserName').value = user.name;
     document.getElementById('grantDesig').textContent = user.designation || '—';
     document.getElementById('grantDept').textContent = user.department || '—';
     document.getElementById('autocompleteList').style.display = 'none';
+    document.getElementById('manualHint').style.display = 'none';
   }
 
   document.addEventListener('click', e => {
@@ -292,17 +343,26 @@
       errorEl.style.display = 'block'; return;
     }
 
+    // In manual mode, read designation/department from the inputs;
+    // otherwise read from the picked user (existing behavior).
+    let designation = selectedUser?.designation || '';
+    let department  = selectedUser?.department  || '';
+    if (manualMode) {
+      designation = document.getElementById('grantDesigInput').value.trim();
+      department  = document.getElementById('grantDeptInput').value.trim();
+    }
+
     const payload = {
       user_name: userName,
       app_name: appName,
       access_type: accessType,
       notes: notes,
-      user_designation: selectedUser?.designation || '',
-      user_department: selectedUser?.department || '',
-      // Prefer the real email from the users table; only fall back to a guess
-      // if email is missing (legacy data)
+      user_designation: designation,
+      user_department: department,
+      // Prefer the real email from the users table; fall back to a name-derived
+      // guess (used both for manual mode and for legacy users without email).
       user_email: (selectedUser?.email
-                   || (selectedUser ? userName.toLowerCase().replace(/\s+/g,'.') + '@5cnetwork.com' : ''))
+                   || userName.toLowerCase().replace(/\s+/g,'') + '@5cnetwork.com')
     };
 
     const r = await post('/admin/access-grants', payload);
@@ -315,6 +375,7 @@
       document.getElementById('grantType').value = '';
       document.getElementById('grantNotes').value = '';
       selectedUser = null;
+      if (manualMode) setManualMode(false);
       await loadData();
     } else {
       errorEl.textContent = r.error || 'Failed to save.';
