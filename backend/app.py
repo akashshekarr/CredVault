@@ -388,13 +388,23 @@ def approve_request(request_id):
     # If an active Individual ID grant already exists for this user+app, the
     # admin has already provisioned them on their own email. We approve the
     # request WITHOUT generating a PSK or sending shared credentials.
+    # We match by email first, then fall back to name-based matching in case
+    # the grant's email field is empty / different from the request's email.
+    email_prefix1 = user_email.split('@')[0].lower()                # cybersafe
+    email_prefix2 = email_prefix1.replace('.', ' ')                 # 'cyber safe'
+    email_prefix3 = email_prefix1.replace('.', '')                  # 'cybersafe'
     indiv_grant = conn.run(
         """SELECT id FROM access_grants
-           WHERE LOWER(user_email)=LOWER(:e) AND app_name=:a
+           WHERE app_name=:a
              AND access_type='Individual ID'
              AND COALESCE(status,'active')='active'
+             AND (
+                  LOWER(user_email)=LOWER(:e)
+               OR LOWER(REPLACE(user_name,' ',''))=:p3
+               OR LOWER(user_name)=:p2
+             )
            LIMIT 1""",
-        e=user_email, a=app_name
+        a=app_name, e=user_email, p2=email_prefix2, p3=email_prefix3
     )
     if indiv_grant:
         conn.run("UPDATE pending_requests SET status='approved', reviewed_at=NOW() WHERE id=:id", id=request_id)
@@ -686,9 +696,9 @@ def admin_pending():
 @login_required
 def admin_users():
     conn = get_db()
-    rows = conn.run("SELECT emp_id, name, designation, department FROM users ORDER BY name")
+    rows = conn.run("SELECT emp_id, name, designation, department, email FROM users ORDER BY name")
     conn.close()
-    return jsonify([{"emp_id": r[0], "name": r[1], "designation": r[2], "department": r[3]} for r in rows])
+    return jsonify([{"emp_id": r[0], "name": r[1], "designation": r[2], "department": r[3], "email": r[4]} for r in rows])
 
 
 @app.route("/admin/users", methods=["POST"])
@@ -740,13 +750,30 @@ def add_access_grant():
     auto_resolved = 0
     if data['access_type'] == 'Individual ID':
         user_email = (data.get('user_email') or '').strip().lower()
+        user_name  = (data.get('user_name')  or '').strip()
+        # Match pending requests by EMAIL or by NAME (name match is a safety net
+        # in case the form's email differs from the request's email, which can
+        # happen for legacy users where the users table didn't store email).
+        # Also: pending_requests stores email but not always name, so we also
+        # match user_email against the email derived from user_name.
+        clauses = []
+        params = {"a": data['app_name']}
         if user_email:
-            pending = conn.run(
-                """SELECT id FROM pending_requests
-                   WHERE LOWER(user_email)=:e AND app_name=:a AND status='pending'""",
-                e=user_email, a=data['app_name']
-            )
-            for (pid,) in pending:
+            clauses.append("LOWER(user_email)=:e")
+            params["e"] = user_email
+        if user_name:
+            # email prefix match: 'Cyber Safe' -> 'cybersafe' or 'cyber.safe'
+            email_prefix1 = user_name.lower().replace(' ', '')
+            email_prefix2 = user_name.lower().replace(' ', '.')
+            clauses.append("(LOWER(user_email) LIKE :pref1 OR LOWER(user_email) LIKE :pref2 OR LOWER(user_name)=:un)")
+            params["pref1"] = f"{email_prefix1}@%"
+            params["pref2"] = f"{email_prefix2}@%"
+            params["un"]    = user_name.lower()
+        if clauses:
+            query = f"""SELECT id, user_email FROM pending_requests
+                        WHERE app_name=:a AND status='pending' AND ({" OR ".join(clauses)})"""
+            pending = conn.run(query, **params)
+            for pid, pemail in pending:
                 conn.run(
                     """UPDATE pending_requests
                        SET status='approved', reviewed_at=NOW()
@@ -756,7 +783,7 @@ def add_access_grant():
                 conn.run(
                     """INSERT INTO audit_logs (user_email, app_name, action)
                        VALUES (:e, :a, 'auto_resolved_individual_id')""",
-                    e=user_email, a=data['app_name']
+                    e=pemail or user_email, a=data['app_name']
                 )
                 auto_resolved += 1
 

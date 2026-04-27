@@ -299,7 +299,10 @@
       notes: notes,
       user_designation: selectedUser?.designation || '',
       user_department: selectedUser?.department || '',
-      user_email: selectedUser ? (userName.toLowerCase().replace(/\s+/g,'.') + '@5cnetwork.com') : ''
+      // Prefer the real email from the users table; only fall back to a guess
+      // if email is missing (legacy data)
+      user_email: (selectedUser?.email
+                   || (selectedUser ? userName.toLowerCase().replace(/\s+/g,'.') + '@5cnetwork.com' : ''))
     };
 
     const r = await post('/admin/access-grants', payload);
