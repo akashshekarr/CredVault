@@ -380,6 +380,9 @@ def process_request():
 @app.route("/api/admin/approve/<request_id>", methods=["POST"])
 @login_required
 def approve_request(request_id):
+    body = request.json or {}
+    chosen_app_id = body.get('app_id')   # if admin picked a specific variant via the picker
+
     conn = get_db()
     rows = conn.run("SELECT id, user_email, app_name, status FROM pending_requests WHERE id = :id", id=request_id)
     if not rows:
@@ -394,11 +397,9 @@ def approve_request(request_id):
     # If an active Individual ID grant already exists for this user+app, the
     # admin has already provisioned them on their own email. We approve the
     # request WITHOUT generating a PSK or sending shared credentials.
-    # We match by email first, then fall back to name-based matching in case
-    # the grant's email field is empty / different from the request's email.
-    email_prefix1 = user_email.split('@')[0].lower()                # cybersafe
-    email_prefix2 = email_prefix1.replace('.', ' ')                 # 'cyber safe'
-    email_prefix3 = email_prefix1.replace('.', '')                  # 'cybersafe'
+    email_prefix1 = user_email.split('@')[0].lower()
+    email_prefix2 = email_prefix1.replace('.', ' ')
+    email_prefix3 = email_prefix1.replace('.', '')
     indiv_grant = conn.run(
         """SELECT id FROM access_grants
            WHERE app_name=:a
@@ -423,26 +424,52 @@ def approve_request(request_id):
             "message": f"Approved. {user_email} already has Individual ID access — no shared credentials sent."
         })
 
-    # ── Path: shared credentials (existing flow, unchanged) ───────────────────
-    app_rows = conn.run("SELECT id, name, url, username, password FROM applications WHERE name = :n", n=app_name)
-    if not app_rows:
-        conn.close()
-        return jsonify({"error": f"App '{app_name}' not found"}), 404
-    _, _, app_url, app_username, app_password = app_rows[0]
+    # ── Path: shared credentials ──────────────────────────────────────────────
+    # Find the variant to use. If admin picked one, use it. Otherwise fall
+    # back to the only/first variant. If multiple variants exist and no pick
+    # was made, return 'variant_choice_required' so the UI shows the picker.
+    if chosen_app_id:
+        app_rows = conn.run(
+            "SELECT id, name, url, username, password, label FROM applications WHERE id=:i AND name=:n",
+            i=chosen_app_id, n=app_name
+        )
+        if not app_rows:
+            conn.close()
+            return jsonify({"error": "Selected variant not found for this app"}), 400
+    else:
+        app_rows = conn.run(
+            "SELECT id, name, url, username, password, label FROM applications WHERE name=:n ORDER BY COALESCE(label, '')",
+            n=app_name
+        )
+        if not app_rows:
+            conn.close()
+            return jsonify({"error": f"App '{app_name}' not found"}), 404
+        if len(app_rows) > 1:
+            conn.close()
+            return jsonify({
+                "error": "variant_choice_required",
+                "variants": [
+                    {"id": r[0], "name": r[1], "label": r[5] or "", "username": r[3]}
+                    for r in app_rows
+                ]
+            }), 409
+
+    _aid, _aname, app_url, app_username, app_password, app_label = app_rows[0]
     psk = generate_psk()
     creds_payload = json.dumps({
         "username": app_username,
         "password": app_password,
         "app_url":  app_url,
-        "app_name": app_name
+        "app_name": app_name,
+        "label":    app_label or "",
     })
     encrypted = encrypt_credentials(creds_payload, psk)
     psk_hash  = hashlib.sha256(psk.encode()).hexdigest()
     token_id  = generate_id()
     expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
-    conn.run("""INSERT INTO psk_tokens (id, user_email, app_name, psk_hash, encrypted_creds, expires_at, used)
-                VALUES (:id, :e, :a, :ph, :ec, :exp, false)""",
-             id=token_id, e=user_email, a=app_name, ph=psk_hash, ec=json.dumps(encrypted), exp=expires_at)
+    conn.run("""INSERT INTO psk_tokens (id, user_email, app_name, psk_hash, encrypted_creds, expires_at, used, label)
+                VALUES (:id, :e, :a, :ph, :ec, :exp, false, :l)""",
+             id=token_id, e=user_email, a=app_name, ph=psk_hash, ec=json.dumps(encrypted), exp=expires_at, l=app_label)
     conn.run("UPDATE pending_requests SET status='approved', reviewed_at=NOW() WHERE id=:id", id=request_id)
     conn.run("INSERT INTO audit_logs (user_email, app_name, action) VALUES (:e, :a, :ac)",
              e=user_email, a=app_name, ac="credentials_sent")
@@ -459,12 +486,10 @@ def approve_request(request_id):
                            ORDER BY granted_at DESC LIMIT 1""",
                         n=u_name, a=app_name)
     if not existing:
-        # Brand new grant
         conn.run("""INSERT INTO access_grants (user_name, user_email, user_designation, user_department, app_name, access_type, granted_by, notes, status)
                     VALUES (:un, :ue, :ud, :udept, :a, 'Credentials', 'auto', 'Auto-logged via CredVault approval', 'active')""",
                  un=u_name, ue=user_email, ud=u_desig, udept=u_dept, a=app_name)
     else:
-        # Existing grant — reactivate if it was revoked, otherwise leave it.
         existing_id, existing_status = existing[0]
         if (existing_status or 'active') != 'active':
             conn.run("""UPDATE access_grants
@@ -552,9 +577,13 @@ def admin_logs():
 @login_required
 def admin_applications():
     conn = get_db()
-    rows = conn.run("SELECT id, name, url, username, created_at FROM applications ORDER BY name")
+    rows = conn.run("SELECT id, name, url, username, created_at, label FROM applications ORDER BY name, COALESCE(label, '')")
     conn.close()
-    return jsonify([{"id": r[0], "name": r[1], "url": r[2], "username": r[3], "created_at": r[4].isoformat() if r[4] else None} for r in rows])
+    return jsonify([{
+        "id": r[0], "name": r[1], "url": r[2], "username": r[3],
+        "created_at": r[4].isoformat() if r[4] else None,
+        "label": r[5] or "",
+    } for r in rows])
 
 
 @app.route("/admin/applications", methods=["POST"])
@@ -564,9 +593,14 @@ def add_application():
     for field in ["name", "url", "username", "password"]:
         if not data.get(field):
             return jsonify({"error": f"'{field}' is required"}), 400
+    label = (data.get('label') or '').strip() or None
     conn = get_db()
-    conn.run("INSERT INTO applications (name, url, username, password) VALUES (:n, :u, :un, :p)",
-             n=data['name'], u=data['url'], un=data['username'], p=data['password'])
+    try:
+        conn.run("INSERT INTO applications (name, url, username, password, label) VALUES (:n, :u, :un, :p, :l)",
+                 n=data['name'], u=data['url'], un=data['username'], p=data['password'], l=label)
+    except Exception as ex:
+        conn.close()
+        return jsonify({"error": str(ex)}), 400
     conn.close()
     return jsonify({"success": True})
 
@@ -577,7 +611,7 @@ def get_application(app_id):
     """Return one app including its current password — admin needs to see it
     when opening the edit modal so they can keep or change it."""
     conn = get_db()
-    rows = conn.run("SELECT id, name, url, username, password, created_at FROM applications WHERE id=:i",
+    rows = conn.run("SELECT id, name, url, username, password, created_at, label FROM applications WHERE id=:i",
                     i=app_id)
     conn.close()
     if not rows:
@@ -587,6 +621,7 @@ def get_application(app_id):
         "id": r[0], "name": r[1], "url": r[2], "username": r[3],
         "password": r[4],
         "created_at": r[5].isoformat() if r[5] else None,
+        "label": r[6] or "",
     })
 
 
@@ -596,57 +631,66 @@ def update_application(app_id):
     """Update an existing app. Password is OPTIONAL on update — if omitted or
     empty, we keep the existing one. Other fields required.
 
-    Behavior on update: every user_credentials row tied to this app is updated
-    in place with the new username / password / app_url. This means admin
-    edits flow IMMEDIATELY to all users and the extension — no PSK re-entry,
-    no stale credentials. The user_credentials table mirrors applications."""
+    Behavior on update: every user_credentials row tied to this (app_name,
+    label) is updated in place. Admin edits flow IMMEDIATELY to all users."""
     data = request.json or {}
     for field in ["name", "url", "username"]:
         if not data.get(field):
             return jsonify({"error": f"'{field}' is required"}), 400
 
     conn = get_db()
-    existing = conn.run("SELECT name, url, username, password FROM applications WHERE id=:i", i=app_id)
+    existing = conn.run("SELECT name, url, username, password, label FROM applications WHERE id=:i", i=app_id)
     if not existing:
         conn.close()
         return jsonify({"error": "Not found"}), 404
 
-    old_name, old_url, old_username, old_password = existing[0]
+    old_name, old_url, old_username, old_password, old_label = existing[0]
+    old_label = old_label or None
 
     new_password = data.get('password')
     if not new_password:
-        new_password = old_password  # keep current
+        new_password = old_password
 
     new_name = data['name']
     new_url  = data['url']
     new_username = data['username']
+    new_label = (data.get('label') or '').strip() or None
 
     try:
         conn.run("""UPDATE applications
-                    SET name=:n, url=:u, username=:un, password=:p
+                    SET name=:n, url=:u, username=:un, password=:p, label=:l
                     WHERE id=:i""",
-                 n=new_name, u=new_url, un=new_username, p=new_password, i=app_id)
+                 n=new_name, u=new_url, un=new_username, p=new_password, l=new_label, i=app_id)
     except Exception as ex:
         conn.close()
         return jsonify({"error": str(ex)}), 400
 
-    # Propagate name change to dependent rows BEFORE updating credentials,
-    # so the credentials update can find them by the new name.
-    if old_name and old_name != new_name:
+    # If the (name, label) key changed, propagate to dependent tables that
+    # store this same key. Only the variant-keyed tables (user_credentials,
+    # psk_tokens) get filtered by label; access_grants/pending_requests are
+    # name-only as before.
+    name_changed  = (old_name != new_name)
+    label_changed = ((old_label or '') != (new_label or ''))
+    if name_changed:
         conn.run("UPDATE access_grants    SET app_name=:nn WHERE app_name=:on", nn=new_name, on=old_name)
         conn.run("UPDATE pending_requests SET app_name=:nn WHERE app_name=:on", nn=new_name, on=old_name)
-        conn.run("UPDATE user_credentials SET app_name=:nn WHERE app_name=:on", nn=new_name, on=old_name)
-        conn.run("UPDATE psk_tokens       SET app_name=:nn WHERE app_name=:on", nn=new_name, on=old_name)
+    if name_changed or label_changed:
+        conn.run("""UPDATE user_credentials
+                    SET app_name=:nn, label=:nl
+                    WHERE app_name=:on AND COALESCE(label, '')=COALESCE(:ol, '')""",
+                 nn=new_name, nl=new_label, on=old_name, ol=old_label)
+        conn.run("""UPDATE psk_tokens
+                    SET app_name=:nn, label=:nl
+                    WHERE app_name=:on AND COALESCE(label, '')=COALESCE(:ol, '')""",
+                 nn=new_name, nl=new_label, on=old_name, ol=old_label)
 
-    # Propagate username/password/app_url to every user who has unlocked this app.
-    # We DO NOT revoke — admin's edit is the source of truth, users should pick
-    # up the new values automatically next time they open the app.
+    # Propagate creds to users who unlocked THIS variant only
     propagated = conn.run(
         """UPDATE user_credentials
            SET username=:un, password=:pw, app_url=:url
-           WHERE app_name=:n AND revoked=false
+           WHERE app_name=:n AND COALESCE(label, '')=COALESCE(:l, '') AND revoked=false
            RETURNING user_email""",
-        un=new_username, pw=new_password, url=new_url, n=new_name
+        un=new_username, pw=new_password, url=new_url, n=new_name, l=new_label
     )
 
     conn.close()
@@ -659,25 +703,51 @@ def update_application(app_id):
 @app.route("/admin/applications/<app_id>", methods=["DELETE"])
 @login_required
 def delete_application(app_id):
-    """Hard-delete an app. Cascades to remove related access grants, pending
-    requests, saved user credentials, and unused PSK tokens."""
+    """Hard-delete a single app variant. Removes user_credentials and unused
+    PSK tokens for THIS variant only. access_grants and pending_requests are
+    only removed if this is the LAST variant with that name (because they're
+    keyed by name only, not name+label)."""
     conn = get_db()
-    rows = conn.run("SELECT name FROM applications WHERE id=:i", i=app_id)
+    rows = conn.run("SELECT name, label FROM applications WHERE id=:i", i=app_id)
     if not rows:
         conn.close()
         return jsonify({"error": "Not found"}), 404
-    app_name = rows[0][0]
+    app_name, label = rows[0]
+    label = label or None
     try:
-        conn.run("DELETE FROM user_credentials WHERE app_name=:n", n=app_name)
-        conn.run("DELETE FROM access_grants    WHERE app_name=:n", n=app_name)
-        conn.run("DELETE FROM pending_requests WHERE app_name=:n", n=app_name)
-        conn.run("DELETE FROM psk_tokens       WHERE app_name=:n AND used=false", n=app_name)
-        conn.run("DELETE FROM applications     WHERE id=:i",       i=app_id)
+        conn.run("""DELETE FROM user_credentials
+                    WHERE app_name=:n AND COALESCE(label, '')=COALESCE(:l, '')""",
+                 n=app_name, l=label)
+        conn.run("""DELETE FROM psk_tokens
+                    WHERE app_name=:n AND COALESCE(label, '')=COALESCE(:l, '') AND used=false""",
+                 n=app_name, l=label)
+        conn.run("DELETE FROM applications WHERE id=:i", i=app_id)
+        # If no other variants of this name exist, also clear name-keyed rows
+        remaining = conn.run("SELECT id FROM applications WHERE name=:n LIMIT 1", n=app_name)
+        if not remaining:
+            conn.run("DELETE FROM access_grants    WHERE app_name=:n", n=app_name)
+            conn.run("DELETE FROM pending_requests WHERE app_name=:n", n=app_name)
     except Exception as ex:
         conn.close()
         return jsonify({"error": str(ex)}), 400
     conn.close()
-    return jsonify({"success": True, "deleted": app_name})
+    return jsonify({"success": True, "deleted": app_name, "label": label or ""})
+
+
+@app.route("/admin/applications/by-name/<app_name>", methods=["GET"])
+@login_required
+def get_applications_by_name(app_name):
+    """Return all variants of an app by name, for the approve picker."""
+    conn = get_db()
+    rows = conn.run(
+        "SELECT id, name, url, username, label FROM applications WHERE name=:n ORDER BY COALESCE(label, '')",
+        n=app_name
+    )
+    conn.close()
+    return jsonify([{
+        "id": r[0], "name": r[1], "url": r[2], "username": r[3],
+        "label": r[4] or ""
+    } for r in rows])
 
 
 @app.route("/admin/tokens", methods=["GET"])
@@ -1147,18 +1217,34 @@ def user_verify_psk():
         d_username = decrypted.get('username')
         d_password = decrypted.get('password')
         d_app_url  = decrypted.get('app_url')
+        d_label    = decrypted.get('label') or None
         # Fall back to applications table for app_url if missing
         if not d_app_url:
-            urow = conn.run("SELECT url FROM applications WHERE name=:a", a=app_name)
+            urow = conn.run(
+                "SELECT url FROM applications WHERE name=:a AND COALESCE(label, '')=COALESCE(:l, '') LIMIT 1",
+                a=app_name, l=d_label
+            )
             if urow:
                 d_app_url = urow[0][0]
-        conn.run(
-            """INSERT INTO user_credentials (user_email, app_name, username, password, app_url, granted_at, revoked)
-               VALUES (:e, :a, :un, :pw, :url, NOW(), false)
-               ON CONFLICT (user_email, app_name)
-               DO UPDATE SET username=:un, password=:pw, app_url=:url, revoked=false, granted_at=NOW()""",
-            e=user_email, a=app_name, un=d_username, pw=d_password, url=d_app_url
+        # Manual upsert keyed on (user_email, app_name, label)
+        existing = conn.run(
+            """SELECT id FROM user_credentials
+               WHERE user_email=:e AND app_name=:a AND COALESCE(label, '')=COALESCE(:l, '')""",
+            e=user_email, a=app_name, l=d_label
         )
+        if existing:
+            conn.run(
+                """UPDATE user_credentials
+                   SET username=:un, password=:pw, app_url=:url, revoked=false, granted_at=NOW()
+                   WHERE id=:id""",
+                un=d_username, pw=d_password, url=d_app_url, id=existing[0][0]
+            )
+        else:
+            conn.run(
+                """INSERT INTO user_credentials (user_email, app_name, label, username, password, app_url, granted_at, revoked)
+                   VALUES (:e, :a, :l, :un, :pw, :url, NOW(), false)""",
+                e=user_email, a=app_name, l=d_label, un=d_username, pw=d_password, url=d_app_url
+            )
     except Exception as ex:
         print(f"[verify_psk] failed to persist credentials: {ex}")
 
@@ -1423,7 +1509,7 @@ def extension_match_domain():
     email = request.extension_user_email
     conn = get_db()
     rows = conn.run(
-        """SELECT app_name, username, password, app_url FROM user_credentials
+        """SELECT app_name, username, password, app_url, label FROM user_credentials
            WHERE user_email=:e AND revoked=false""",
         e=email
     )
@@ -1432,7 +1518,7 @@ def extension_match_domain():
     out = []
     from urllib.parse import urlparse as _up
     heal_conn = None
-    for app_name, uname, pw, app_url in rows:
+    for app_name, uname, pw, app_url, label in rows:
         if not app_url:
             continue
         try:
@@ -1448,25 +1534,28 @@ def extension_match_domain():
             continue
         # Strict match only — exact hostname equality
         if hostname == host:
-            # Self-heal: if our row has empty username or password, refill from applications
+            # Self-heal: if our row has empty username or password, refill from
+            # the matching variant in applications.
             if not uname or not pw:
                 if heal_conn is None:
                     heal_conn = get_db()
                 arows = heal_conn.run(
-                    "SELECT username, password, url FROM applications WHERE name=:a",
-                    a=app_name
+                    """SELECT username, password, url FROM applications
+                       WHERE name=:a AND COALESCE(label, '')=COALESCE(:l, '') LIMIT 1""",
+                    a=app_name, l=label
                 )
                 if arows:
                     a_un, a_pw, a_url = arows[0]
                     heal_conn.run(
                         """UPDATE user_credentials
                            SET username=:un, password=:pw, app_url=:url
-                           WHERE user_email=:e AND app_name=:a""",
-                        un=a_un, pw=a_pw, url=a_url, e=email, a=app_name
+                           WHERE user_email=:e AND app_name=:a AND COALESCE(label,'')=COALESCE(:l,'')""",
+                        un=a_un, pw=a_pw, url=a_url, e=email, a=app_name, l=label
                     )
                     uname, pw, app_url = a_un, a_pw, a_url
             out.append({
                 "app_name": app_name,
+                "label":    label or "",
                 "username": uname,
                 "password": pw,
                 "app_url": app_url,
@@ -1517,6 +1606,52 @@ def _ext_init_tables():
 
 
 _ext_init_tables()
+
+# ── Variant support: idempotent column additions ────────────────────────────
+def _variant_init():
+    """Add 'label' column to applications, user_credentials, and psk_tokens
+    so multiple credentials per app are possible. Existing rows have NULL
+    label which is treated as the default/only variant."""
+    try:
+        conn = get_db()
+        for tbl in ('applications', 'user_credentials', 'psk_tokens'):
+            try:
+                conn.run(f"ALTER TABLE {tbl} ADD COLUMN IF NOT EXISTS label TEXT")
+            except Exception as ex:
+                print(f"[variant] {tbl} label migration skipped: {ex}")
+        # Drop old UNIQUE on applications.name if it exists, replace with a
+        # functional UNIQUE INDEX on (name, COALESCE(label, '')) so two
+        # ChatGPT rows can coexist as long as their labels differ.
+        try:
+            conn.run("ALTER TABLE applications DROP CONSTRAINT IF EXISTS applications_name_key")
+        except Exception as ex:
+            print(f"[variant] drop name unique skipped: {ex}")
+        try:
+            conn.run("""
+                CREATE UNIQUE INDEX IF NOT EXISTS applications_name_label_key
+                ON applications (name, COALESCE(label, ''))
+            """)
+        except Exception as ex:
+            print(f"[variant] name+label unique index skipped: {ex}")
+        # Same for user_credentials: a user can hold credentials for multiple
+        # variants of the same app, so the unique key needs to include label.
+        try:
+            conn.run("ALTER TABLE user_credentials DROP CONSTRAINT IF EXISTS user_credentials_user_email_app_name_key")
+        except Exception as ex:
+            print(f"[variant] drop user_credentials unique skipped: {ex}")
+        try:
+            conn.run("""
+                CREATE UNIQUE INDEX IF NOT EXISTS user_credentials_user_app_label_key
+                ON user_credentials (user_email, app_name, COALESCE(label, ''))
+            """)
+        except Exception as ex:
+            print(f"[variant] user_credentials unique index skipped: {ex}")
+        conn.close()
+        print("[variant] schema ready")
+    except Exception as e:
+        print(f"[variant] migration failed: {e}")
+
+_variant_init()
 
 # ╚══════════════════════════════════════════════════════════════════════════╝
 

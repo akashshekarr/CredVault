@@ -245,8 +245,8 @@
       <div class="panel">
         <div class="panel-head"><div class="panel-title">Audit Log</div></div>
         <div class="log-controls">
-          <input id="logSearch" class="inp inp-search" placeholder="search user, app, action..." oninput="filterLogs()">
-          <select id="logFilter" class="inp" onchange="filterLogs()">
+          <input id="logSearch" class="inp inp-search" placeholder="search user, app, action..." oninput="logsPage=1;filterLogs()">
+          <select id="logFilter" class="inp" onchange="logsPage=1;filterLogs()">
             <option value="">all actions</option>
             <option value="access_requested">access_requested</option>
             <option value="credentials_sent">credentials_sent</option>
@@ -331,6 +331,7 @@
   document.getElementById('addAppBtn').addEventListener('click',function(){
     openModal('Add New Application',
       `<div class="field"><div class="field-label">App Name *</div><input id="fName" class="inp" style="width:100%" placeholder="e.g. Slack"></div>
+       <div class="field"><div class="field-label">Label (optional)</div><input id="fLabel" class="inp" style="width:100%" placeholder="e.g. Plus account, Team 1"><div style="font-size:10px;color:var(--muted);margin-top:4px">Use a label when you have multiple credentials for the same app.</div></div>
        <div class="field"><div class="field-label">URL *</div><input id="fUrl" class="inp" style="width:100%" placeholder="https://..."></div>
        <div class="field"><div class="field-label">Username / Email *</div><input id="fUser" class="inp" style="width:100%" placeholder="user@5cnetwork.com"></div>
        <div class="field"><div class="field-label">Password *</div><input id="fPass" type="password" class="inp" style="width:100%"></div>`,
@@ -339,11 +340,12 @@
   });
   async function submitApp(){
     const name=document.getElementById('fName').value.trim();
+    const label=document.getElementById('fLabel').value.trim();
     const url=document.getElementById('fUrl').value.trim();
     const user=document.getElementById('fUser').value.trim();
     const pass=document.getElementById('fPass').value;
-    if(!name||!url||!user||!pass){alert('All fields are required.');return;}
-    try{await post('/admin/applications',{name,url,username:user,password:pass});closeModal();loadAll();}
+    if(!name||!url||!user||!pass){alert('Name, URL, username and password are required.');return;}
+    try{await post('/admin/applications',{name,label,url,username:user,password:pass});closeModal();loadAll();}
     catch(e){alert('Error: '+e.message);}
   }
 
@@ -356,8 +358,11 @@
     const app = allApps.find(a => String(a.id) === String(id));
     if(!app) return;
     const safeName = (app.name||'').replace(/'/g,"\\'").replace(/"/g,'&quot;');
-    openModal(app.name,
+    const labelRow = app.label ? `<div class="field"><div class="field-label">Label</div><div class="field-val">${app.label}</div></div>` : '';
+    const titleSuffix = app.label ? ' — ' + app.label : '';
+    openModal(app.name + titleSuffix,
       `<div class="field"><div class="field-label">App Name</div><div class="field-val">${app.name}</div></div>
+       ${labelRow}
        <div class="field"><div class="field-label">URL</div><a class="field-val link" href="${app.url||'#'}" target="_blank">${app.url||'—'}</a></div>
        <div class="field"><div class="field-label">Username</div><div class="field-val">${app.username||'—'}</div></div>
        <div class="field"><div class="field-label">Password</div><div class="field-val">••••••••••</div></div>
@@ -373,9 +378,13 @@
     try { app = await get('/admin/applications/' + encodeURIComponent(id)); }
     catch(e){ alert('Could not load app: '+e.message); return; }
     const esc = (s) => (s==null?'':String(s)).replace(/"/g,'&quot;');
-    openModal('Edit · ' + app.name,
+    const titleSuffix = app.label ? ' — ' + app.label : '';
+    openModal('Edit · ' + app.name + titleSuffix,
       `<div class="field"><div class="field-label">App Name *</div>
          <input id="eName" class="inp" style="width:100%" value="${esc(app.name)}"></div>
+       <div class="field"><div class="field-label">Label (optional)</div>
+         <input id="eLabel" class="inp" style="width:100%" value="${esc(app.label)}" placeholder="e.g. Plus account, Team 1">
+         <div style="font-size:10px;color:var(--muted);margin-top:4px">Use a label when you have multiple credentials for the same app.</div></div>
        <div class="field"><div class="field-label">URL *</div>
          <input id="eUrl" class="inp" style="width:100%" value="${esc(app.url)}"></div>
        <div class="field"><div class="field-label">Username / Email *</div>
@@ -410,12 +419,13 @@
 
   async function saveApp(id){
     const name=document.getElementById('eName').value.trim();
+    const label=document.getElementById('eLabel').value.trim();
     const url =document.getElementById('eUrl').value.trim();
     const user=document.getElementById('eUser').value.trim();
     const pass=document.getElementById('ePass').value;
     if(!name||!url||!user){alert('Name, URL and username are required.');return;}
     try{
-      const body = { name, url, username: user };
+      const body = { name, label, url, username: user };
       if (pass) body.password = pass;
       const r = await put('/admin/applications/' + encodeURIComponent(id), body);
       window.__editingPassword = '';
@@ -457,21 +467,79 @@
         </div>
       </div>`).join('');
   }
-  async function approve(id){try{await post('/api/admin/approve/'+id,{});loadAll();}catch(e){alert('Error: '+e.message);}}
+  async function approve(id, appId){
+    try {
+      const body = appId ? { app_id: appId } : {};
+      const r = await fetch('/api/admin/approve/'+id, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(body)
+      });
+      const data = await r.json().catch(()=>({}));
+      if (r.status === 409 && data.error === 'variant_choice_required') {
+        showVariantPicker(id, data.variants || []);
+        return;
+      }
+      if (!r.ok) throw new Error(data.error || ('Status '+r.status));
+      loadAll();
+    } catch(e) { alert('Error: '+e.message); }
+  }
+
+  function showVariantPicker(requestId, variants) {
+    const esc = (s) => (s==null?'':String(s)).replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    const cards = variants.map(v => `
+      <div onclick="pickVariantAndApprove('${requestId}','${v.id}')"
+           style="background:var(--surface2);border:1px solid var(--border-soft);border-radius:10px;padding:12px 14px;margin-bottom:8px;cursor:pointer;transition:border-color 0.15s"
+           onmouseover="this.style.borderColor='var(--cyan)'"
+           onmouseout="this.style.borderColor='var(--border-soft)'">
+        <div style="font-weight:700;font-size:13px">${esc(v.name)}${v.label ? ' — <span style=\"color:var(--cyan);font-weight:600\">'+esc(v.label)+'</span>' : ''}</div>
+        <div style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-top:3px">${esc(v.username||'—')}</div>
+      </div>`).join('');
+    openModal('Choose credential to send',
+      `<div style="font-size:12px;color:var(--text-dim);margin-bottom:12px;line-height:1.5">
+         This app has multiple credentials. Pick which one to send to the requester.
+       </div>${cards}`,
+      `<button class="btn" onclick="closeModal()">Cancel</button>`);
+  }
+
+  async function pickVariantAndApprove(requestId, appId) {
+    closeModal();
+    await approve(requestId, appId);
+  }
   async function reject(id){try{await post('/api/admin/reject/'+id,{});loadAll();}catch(e){alert('Error: '+e.message);}}
 
   /* ── APPS ── */
+  let appsPage = 1;
+  const APPS_PER_PAGE = 10;
+
   function renderApps(apps){
     allApps=apps;
     document.getElementById('sApps').textContent=apps.length;
     const el=document.getElementById('appsPanel');
     if(!apps.length){el.innerHTML='<div class="empty">no apps yet</div>';return;}
-    el.innerHTML=apps.map(a=>`
+    const totalPages = Math.max(1, Math.ceil(apps.length / APPS_PER_PAGE));
+    if (appsPage > totalPages) appsPage = totalPages;
+    const start = (appsPage - 1) * APPS_PER_PAGE;
+    const slice = apps.slice(start, start + APPS_PER_PAGE);
+    const rowsHtml = slice.map(a=>{
+      const labelSuffix = a.label ? ` <span style="color:var(--muted);font-weight:400">— ${a.label}</span>` : '';
+      return `
       <div class="app-row" onclick="viewApp('${a.id}')">
         <div class="app-avatar" style="background:${colorFor(a.name)};color:#07090f">${initials(a.name)}</div>
-        <div class="app-info"><div class="app-name">${a.name}</div><div class="app-user">${a.username||'—'}</div></div>
+        <div class="app-info"><div class="app-name">${a.name}${labelSuffix}</div><div class="app-user">${a.username||'—'}</div></div>
         <span class="badge badge-g">active</span>
-      </div>`).join('');
+      </div>`;
+    }).join('');
+    let pagerHtml = '';
+    if (apps.length > APPS_PER_PAGE) {
+      pagerHtml = `
+        <div class="pager" style="display:flex;align-items:center;justify-content:center;gap:12px;padding:10px 14px;border-top:1px solid var(--border-soft);font-size:12px">
+          <button class="btn" style="padding:6px 12px;font-size:11px" ${appsPage<=1?'disabled style="opacity:0.4;cursor:not-allowed"':''} onclick="appsPage=${appsPage-1};renderApps(allApps);">← Prev</button>
+          <span style="color:var(--muted);font-family:'JetBrains Mono',monospace">Page ${appsPage} of ${totalPages}</span>
+          <button class="btn" style="padding:6px 12px;font-size:11px" ${appsPage>=totalPages?'disabled style="opacity:0.4;cursor:not-allowed"':''} onclick="appsPage=${appsPage+1};renderApps(allApps);">Next →</button>
+        </div>`;
+    }
+    el.innerHTML = rowsHtml + pagerHtml;
   }
 
   /* ── LOGS ── */
@@ -481,18 +549,35 @@
     document.getElementById('sUsers').textContent=new Set(logs.map(l=>l.user_email).filter(Boolean)).size;
     filterLogs();
   }
+  let logsPage = 1;
+  const LOGS_PER_PAGE = 10;
+
   function filterLogs(){
     const q=(document.getElementById('logSearch').value||'').toLowerCase();
     const f=document.getElementById('logFilter').value;
     let rows=allLogs.slice();
     if(f) rows=rows.filter(l=>(l.action||'')===f);
     if(q) rows=rows.filter(l=>JSON.stringify(l).toLowerCase().includes(q));
-    rows=rows.slice(0,80);
+    const total = rows.length;
+    const totalPages = Math.max(1, Math.ceil(total / LOGS_PER_PAGE));
+    if (logsPage > totalPages) logsPage = totalPages;
+    const start = (logsPage - 1) * LOGS_PER_PAGE;
+    const pageRows = rows.slice(start, start + LOGS_PER_PAGE);
     const el=document.getElementById('logsPanel');
-    if(!rows.length){el.innerHTML='<div class="empty">no log entries match</div>';return;}
-    el.innerHTML=`<table><thead><tr><th>User</th><th>App</th><th>Action</th><th>When</th></tr></thead><tbody>
-      ${rows.map(l=>`<tr><td>${(l.user_email||'').split('@')[0]}</td><td>${l.app_name||'—'}</td><td>${l.action||'—'}</td><td>${fmtDate(l.timestamp)}</td></tr>`).join('')}
+    if(!total){el.innerHTML='<div class="empty">no log entries match</div>';return;}
+    const tableHtml = `<table><thead><tr><th>User</th><th>App</th><th>Action</th><th>When</th></tr></thead><tbody>
+      ${pageRows.map(l=>`<tr><td>${(l.user_email||'').split('@')[0]}</td><td>${l.app_name||'—'}</td><td>${l.action||'—'}</td><td>${fmtDate(l.timestamp)}</td></tr>`).join('')}
     </tbody></table>`;
+    let pagerHtml = '';
+    if (total > LOGS_PER_PAGE) {
+      pagerHtml = `
+        <div class="pager" style="display:flex;align-items:center;justify-content:center;gap:12px;padding:10px 14px;border-top:1px solid var(--border-soft);font-size:12px;margin-top:6px">
+          <button class="btn" style="padding:6px 12px;font-size:11px" ${logsPage<=1?'disabled style="opacity:0.4;cursor:not-allowed"':''} onclick="logsPage=${logsPage-1};filterLogs();">← Prev</button>
+          <span style="color:var(--muted);font-family:'JetBrains Mono',monospace">Page ${logsPage} of ${totalPages} · ${total} total</span>
+          <button class="btn" style="padding:6px 12px;font-size:11px" ${logsPage>=totalPages?'disabled style="opacity:0.4;cursor:not-allowed"':''} onclick="logsPage=${logsPage+1};filterLogs();">Next →</button>
+        </div>`;
+    }
+    el.innerHTML = tableHtml + pagerHtml;
   }
 
   /* ── TOKENS ── */
