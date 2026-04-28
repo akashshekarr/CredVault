@@ -85,9 +85,13 @@
     .pending-header{display:flex;align-items:center;gap:12px;margin-bottom:14px}
     .pending-title{font-size:11px;font-weight:600;letter-spacing:0.18em;text-transform:uppercase;color:var(--text-dim)}
     .pulse-dot{width:9px;height:9px;border-radius:50%;background:var(--amber);box-shadow:0 0 0 4px rgba(255,181,71,0.18),0 0 14px var(--amber);animation:pulse 1.4s infinite}
-    .grid-2-3{display:grid;grid-template-columns:2fr 3fr;gap:16px;margin-bottom:16px;align-items:start}
-    .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;align-items:start}
+    .grid-2-3{display:grid;grid-template-columns:2fr 3fr;gap:16px;margin-bottom:16px}
+    .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
     .panel{background:linear-gradient(180deg,rgba(16,20,31,0.85),rgba(11,14,23,0.85));backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border:1px solid var(--border-soft);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow-1);position:relative}
+    .panel-flex{display:flex;flex-direction:column}
+    .panel-flex .logs-flex{flex:1;display:flex;flex-direction:column;justify-content:space-between}
+    .panel-flex .logs-flex>table{margin-bottom:0}
+    .panel-flex .logs-flex .pager{margin-top:auto}
     .panel-head{padding:14px 18px;border-bottom:1px solid var(--border-soft);display:flex;align-items:center;justify-content:space-between;background:linear-gradient(180deg,rgba(255,255,255,0.025),transparent)}
     .panel-title{font-size:11px;font-weight:600;letter-spacing:0.18em;text-transform:uppercase;color:var(--text-dim);display:flex;align-items:center;gap:10px}
     .panel-title::before{content:'';width:6px;height:6px;border-radius:2px;background:linear-gradient(135deg,var(--cyan),var(--violet));box-shadow:0 0 10px var(--cyan)}
@@ -242,7 +246,7 @@
         </div>
         <div id="appsPanel"><div class="loading">loading vault...</div></div>
       </div>
-      <div class="panel">
+      <div class="panel panel-flex">
         <div class="panel-head"><div class="panel-title">Audit Log</div></div>
         <div class="log-controls">
           <input id="logSearch" class="inp inp-search" placeholder="search user, app, action..." oninput="logsPage=1;filterLogs()">
@@ -255,7 +259,7 @@
             <option value="domain_rejected">domain_rejected</option>
           </select>
         </div>
-        <div id="logsPanel"><div class="loading">fetching logs...</div></div>
+        <div id="logsPanel" class="logs-flex"><div class="loading">fetching logs...</div></div>
       </div>
     </section>
 
