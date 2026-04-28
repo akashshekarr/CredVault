@@ -85,13 +85,9 @@
     .pending-header{display:flex;align-items:center;gap:12px;margin-bottom:14px}
     .pending-title{font-size:11px;font-weight:600;letter-spacing:0.18em;text-transform:uppercase;color:var(--text-dim)}
     .pulse-dot{width:9px;height:9px;border-radius:50%;background:var(--amber);box-shadow:0 0 0 4px rgba(255,181,71,0.18),0 0 14px var(--amber);animation:pulse 1.4s infinite}
-    .grid-2-3{display:grid;grid-template-columns:2fr 3fr;gap:16px;margin-bottom:16px}
-    .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+    .grid-2-3{display:grid;grid-template-columns:2fr 3fr;gap:16px;margin-bottom:16px;align-items:start}
+    .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;align-items:start}
     .panel{background:linear-gradient(180deg,rgba(16,20,31,0.85),rgba(11,14,23,0.85));backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border:1px solid var(--border-soft);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow-1);position:relative}
-    .panel-flex{display:flex;flex-direction:column}
-    .panel-flex .logs-flex{flex:1;display:flex;flex-direction:column;justify-content:space-between}
-    .panel-flex .logs-flex>table{margin-bottom:0}
-    .panel-flex .logs-flex .pager{margin-top:auto}
     .panel-head{padding:14px 18px;border-bottom:1px solid var(--border-soft);display:flex;align-items:center;justify-content:space-between;background:linear-gradient(180deg,rgba(255,255,255,0.025),transparent)}
     .panel-title{font-size:11px;font-weight:600;letter-spacing:0.18em;text-transform:uppercase;color:var(--text-dim);display:flex;align-items:center;gap:10px}
     .panel-title::before{content:'';width:6px;height:6px;border-radius:2px;background:linear-gradient(135deg,var(--cyan),var(--violet));box-shadow:0 0 10px var(--cyan)}
@@ -577,7 +573,7 @@
       pagerHtml = `
         <div class="pager" style="display:flex;align-items:center;justify-content:center;gap:12px;padding:10px 14px;border-top:1px solid var(--border-soft);font-size:12px;margin-top:6px">
           <button class="btn" style="padding:6px 12px;font-size:11px" ${logsPage<=1?'disabled style="opacity:0.4;cursor:not-allowed"':''} onclick="logsPage=${logsPage-1};filterLogs();">← Prev</button>
-          <span style="color:var(--muted);font-family:'JetBrains Mono',monospace">Page ${logsPage} of ${totalPages} · ${total} total</span>
+          <span style="color:var(--muted);font-family:'JetBrains Mono',monospace">Page ${logsPage} of ${totalPages}</span>
           <button class="btn" style="padding:6px 12px;font-size:11px" ${logsPage>=totalPages?'disabled style="opacity:0.4;cursor:not-allowed"':''} onclick="logsPage=${logsPage+1};filterLogs();">Next →</button>
         </div>`;
     }
