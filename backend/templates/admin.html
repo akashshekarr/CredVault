@@ -245,8 +245,8 @@
       <div class="panel panel-flex">
         <div class="panel-head"><div class="panel-title">Audit Log</div></div>
         <div class="log-controls">
-          <input id="logSearch" class="inp inp-search" placeholder="search user, app, action..." oninput="logsPage=1;filterLogs()">
-          <select id="logFilter" class="inp" onchange="logsPage=1;filterLogs()">
+          <input id="logSearch" class="inp inp-search" placeholder="search user, app, action..." oninput="filterLogs()">
+          <select id="logFilter" class="inp" onchange="filterLogs()">
             <option value="">all actions</option>
             <option value="access_requested">access_requested</option>
             <option value="credentials_sent">credentials_sent</option>
@@ -549,35 +549,18 @@
     document.getElementById('sUsers').textContent=new Set(logs.map(l=>l.user_email).filter(Boolean)).size;
     filterLogs();
   }
-  let logsPage = 1;
-  const LOGS_PER_PAGE = 10;
-
   function filterLogs(){
     const q=(document.getElementById('logSearch').value||'').toLowerCase();
     const f=document.getElementById('logFilter').value;
     let rows=allLogs.slice();
     if(f) rows=rows.filter(l=>(l.action||'')===f);
     if(q) rows=rows.filter(l=>JSON.stringify(l).toLowerCase().includes(q));
-    const total = rows.length;
-    const totalPages = Math.max(1, Math.ceil(total / LOGS_PER_PAGE));
-    if (logsPage > totalPages) logsPage = totalPages;
-    const start = (logsPage - 1) * LOGS_PER_PAGE;
-    const pageRows = rows.slice(start, start + LOGS_PER_PAGE);
+    rows=rows.slice(0,80);
     const el=document.getElementById('logsPanel');
-    if(!total){el.innerHTML='<div class="empty">no log entries match</div>';return;}
-    const tableHtml = `<table><thead><tr><th>User</th><th>App</th><th>Action</th><th>When</th></tr></thead><tbody>
-      ${pageRows.map(l=>`<tr><td>${(l.user_email||'').split('@')[0]}</td><td>${l.app_name||'—'}</td><td>${l.action||'—'}</td><td>${fmtDate(l.timestamp)}</td></tr>`).join('')}
+    if(!rows.length){el.innerHTML='<div class="empty">no log entries match</div>';return;}
+    el.innerHTML=`<table><thead><tr><th>User</th><th>App</th><th>Action</th><th>When</th></tr></thead><tbody>
+      ${rows.map(l=>`<tr><td>${(l.user_email||'').split('@')[0]}</td><td>${l.app_name||'—'}</td><td>${l.action||'—'}</td><td>${fmtDate(l.timestamp)}</td></tr>`).join('')}
     </tbody></table>`;
-    let pagerHtml = '';
-    if (total > LOGS_PER_PAGE) {
-      pagerHtml = `
-        <div class="pager" style="display:flex;align-items:center;justify-content:center;gap:12px;padding:10px 14px;border-top:1px solid var(--border-soft);font-size:12px;margin-top:6px">
-          <button class="btn" style="padding:6px 12px;font-size:11px" ${logsPage<=1?'disabled style="opacity:0.4;cursor:not-allowed"':''} onclick="logsPage=${logsPage-1};filterLogs();">← Prev</button>
-          <span style="color:var(--muted);font-family:'JetBrains Mono',monospace">Page ${logsPage} of ${totalPages}</span>
-          <button class="btn" style="padding:6px 12px;font-size:11px" ${logsPage>=totalPages?'disabled style="opacity:0.4;cursor:not-allowed"':''} onclick="logsPage=${logsPage+1};filterLogs();">Next →</button>
-        </div>`;
-    }
-    el.innerHTML = tableHtml + pagerHtml;
   }
 
   /* ── TOKENS ── */
