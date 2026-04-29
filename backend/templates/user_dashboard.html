@@ -175,30 +175,20 @@
     if (!appName) return null;
     // Internal 5C company apps — locally hosted logos
     const nm = appName.toLowerCase().trim();
-    if (nm === '5c admin platform') return '/static/logos/5c-default.png';
+    if (nm === '5c admin platform') return '/static/logos/5c-admin.png';
     if (nm.startsWith('5c '))       return '/static/logos/5c-default.png';
-    const logos = {
-      'chatgpt':'https://upload.wikimedia.org/wikipedia/commons/thumb/0/04/ChatGPT_logo.svg/512px-ChatGPT_logo.svg.png',
-      'claude':'https://upload.wikimedia.org/wikipedia/commons/thumb/8/8a/Claude_AI_logo.svg/512px-Claude_AI_logo.svg.png',
-      'cursor':'https://www.cursor.com/favicon.ico',
-      'slack':'https://a.slack-edge.com/80588/marketing/img/meta/favicon-32.png',
-      'notion':'https://www.notion.so/images/favicon.ico',
-      'figma':'https://static.figma.com/app/icon/1/favicon.ico',
-      'github':'https://github.githubassets.com/favicons/favicon.svg',
-      'zoom':'https://st1.zoom.us/zoom.ico',
-      'canva':'https://www.canva.com/favicon.ico',
-      'linear':'https://linear.app/favicon.ico',
-      'monday':'https://monday.com/favicon.ico',
-    };
-    const key = appName.toLowerCase().replace(/[\s\.\-]+/g,'');
-    if (logos[key]) return logos[key];
-    if (appUrl) { try { return `https://www.google.com/s2/favicons?domain=${new URL(appUrl).hostname}&sz=128`; } catch(e){} }
+    // Everything else: Clearbit's logo API. Returns crisp official logos for
+    // any commercial domain. If it fails, the onerror chain falls back to
+    // Google favicons, then to a colored letter avatar.
+    if (appUrl) {
+      try { return `https://logo.clearbit.com/${new URL(appUrl).hostname}`; } catch(e){}
+    }
     return null;
   }
 
   function fallbackFaviconUrl(appUrl) {
     if (!appUrl) return null;
-    try { return `https://icons.duckduckgo.com/ip3/${new URL(appUrl).hostname}.ico`; } catch(e){ return null; }
+    try { return `https://www.google.com/s2/favicons?domain=${new URL(appUrl).hostname}&sz=128`; } catch(e){ return null; }
   }
 
   function logoHtml(appName, appUrl) {
