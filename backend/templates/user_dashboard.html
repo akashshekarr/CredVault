@@ -173,10 +173,24 @@
 
   function getLogoUrl(appName, appUrl) {
     if (!appName) return null;
-    // Internal 5C company apps — locally hosted logos
     const nm = appName.toLowerCase().trim();
+    // Internal 5C company apps
     if (nm === '5c admin platform') return '/static/logos/5c-admin.png';
     if (nm.startsWith('5c '))       return '/static/logos/5c-default.png';
+    // Logos uploaded by admin — locally hosted
+    const localLogos = {
+      'adobe pdf':     '/static/logos/adobe.png',
+      'ameyo':         '/static/logos/ameyo.png',
+      'cursor':        '/static/logos/cursor.png',
+      'gcp':           '/static/logos/gcp.png',
+      'genspark':      '/static/logos/genspark.png',
+      'ghost ai':      '/static/logos/ghost-ai.jpg',
+      'gupshup':       '/static/logos/gupshup.png',
+      'mailchimp':     '/static/logos/mailchimp.png',
+      'mongodb':       '/static/logos/mongodb.png',
+      'oracle cloud':  '/static/logos/oracle-cloud.jpg',
+    };
+    if (localLogos[nm]) return localLogos[nm];
     // Everything else: Clearbit's logo API. Returns crisp official logos for
     // any commercial domain. If it fails, the onerror chain falls back to
     // Google favicons, then to a colored letter avatar.
@@ -195,9 +209,12 @@
     if (!appName) return { bg: '#1a1a2e', inner: '?' };
     const url = getLogoUrl(appName, appUrl);
     const fallback = fallbackFaviconUrl(appUrl);
-    const bg = url ? '#1a1a2e' : colorFor(appName);
-    // On image error, first try the DuckDuckGo favicon; if THAT fails too,
-    // collapse to a colored letter avatar.
+    // Use white background for our locally uploaded PNG/JPG logos (they were
+    // designed with transparent backgrounds and look right on white). For
+    // remote/Clearbit logos, keep the dark background since those usually
+    // come pre-styled on their own brand color.
+    const isLocal = !!(url && url.indexOf('/static/logos/') === 0);
+    const bg = url ? (isLocal ? '#FFFFFF' : '#1a1a2e') : colorFor(appName);
     const onerr = fallback
       ? `if(this.dataset.tried!=='1'){this.dataset.tried='1';this.src='${fallback}';}else{this.parentElement.style.background='${colorFor(appName)}';this.parentElement.innerHTML='<span style=color:#07090f>${initials(appName)}</span>';}`
       : `this.parentElement.style.background='${colorFor(appName)}';this.parentElement.innerHTML='<span style=color:#07090f>${initials(appName)}</span>';`;
